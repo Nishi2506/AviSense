@@ -28,7 +28,7 @@ Layout (Ultralytics maps `/images/` → `/labels/` to find each label file):
 
 ```
 raw/airbirds/
-├── images/{train,val,test}/*.jpg
+├── images/{train,val,test}/*.png
 └── labels/{train,val,test}/*.txt
 ```
 

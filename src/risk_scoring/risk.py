@@ -140,10 +140,17 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--config", default=DEFAULT_CONFIG, help="Risk config YAML.")
     p.add_argument("--out", required=True, help="Output per-frame risk CSV.")
     p.add_argument("--alerts-out", default=None, help="Optional alert episodes CSV.")
+    p.add_argument("--ml-model", default=None,
+                   help="Optional classifier JSON from the Colab notebook; adds an ml_level column.")
     args = p.parse_args(argv)
 
     cfg = RiskConfig.load(args.config)
     risk = score(pd.read_csv(args.features), cfg)
+    if args.ml_model:
+        from src.risk_scoring.ml_model import RiskClassifier
+        risk["ml_level"] = RiskClassifier.load(args.ml_model).predict(risk)
+        agree = (risk["ml_level"] == risk["risk_level"]).mean()
+        print(f"ML classifier agrees with the formula on {agree:.0%} of frames")
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     risk.to_csv(args.out, index=False)
     print(f"Risk for {len(risk)} frames saved to {args.out}")
