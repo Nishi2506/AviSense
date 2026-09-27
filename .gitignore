@@ -1,0 +1,46 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+
+# --- IDE / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Secrets ---
+.env
+.streamlit/secrets.toml
+
+# --- Data (large; download separately, never commit) ---
+data/**
+!data/**/
+!data/**/.gitkeep
+!data/README.md
+
+# --- Model weights & training runs ---
+*.pt
+*.pth
+*.onnx
+*.engine
+models/**
+!models/.gitkeep
+runs/
+
+# --- Outputs / logs ---
+outputs/**
+!outputs/.gitkeep
+*.db
+*.sqlite
+*.log

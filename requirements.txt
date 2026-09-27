@@ -1,0 +1,27 @@
+# AviSense dependencies
+#
+# NOTE: PyTorch is intentionally NOT listed here. Install it FIRST with the
+# build matching your GPU (see README "Setup"), otherwise pip pulls the
+# CPU-only wheel as an ultralytics dependency.
+
+# Detection + tracking (YOLO11 / YOLOv8, ByteTrack via model.track())
+ultralytics>=8.3.0,<9.0
+lap>=0.5.12                 # linear assignment solver used by ByteTrack
+
+# Video I/O and frame processing
+opencv-python>=4.10,<5.0
+
+# Feature extraction
+numpy>=1.26,<3.0
+pandas>=2.2,<3.0
+
+# Risk classifier (optional ML alternative to the weighted formula)
+scikit-learn>=1.5,<2.0
+
+# Dashboard
+streamlit>=1.40,<2.0
+
+# Dev / notebooks
+pytest>=8.0
+jupyter>=1.1
+matplotlib>=3.9
