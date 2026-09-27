@@ -30,7 +30,9 @@ from src.risk_scoring.risk import DEFAULT_CONFIG, FACTORS, LEVELS, RiskConfig, c
 from src.risk_scoring.zones import Zone, draw_zones, load_zones
 from src.tracking.track import DEFAULT_TRACK_CONF, BirdTracker, TrackedDetection, TrackHistory, draw_tracks
 
-LEVEL_COLORS = {"Low": (80, 175, 76), "Medium": (0, 165, 255), "High": (40, 40, 220)}  # BGR
+# Status palette (good / warning / critical), BGR; banner text color chosen for contrast.
+LEVEL_COLORS = {"Low": (12, 163, 12), "Medium": (25, 178, 250), "High": (59, 59, 208)}
+LEVEL_TEXT = {"Low": (255, 255, 255), "Medium": (11, 11, 11), "High": (255, 255, 255)}
 
 
 def parse_start_time(source: str) -> datetime | None:
@@ -227,7 +229,7 @@ def draw_risk_banner(frame: np.ndarray, risk: FrameRisk, alerting: bool) -> None
     cv2.rectangle(frame, (0, 0), (frame.shape[1], 40), color, -1)
     why = f" - {risk.top_factor}" if risk.top_factor else ""
     text = f"{'ALERT  ' if alerting else ''}RISK {risk.level.upper()} {risk.score:.2f}{why}   birds: {risk.features['count']}"
-    cv2.putText(frame, text, (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, cv2.LINE_AA)
+    cv2.putText(frame, text, (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.8, LEVEL_TEXT[risk.level], 2, cv2.LINE_AA)
 
 
 def main(argv: list[str] | None = None) -> None:
