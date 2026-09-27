@@ -22,12 +22,27 @@ Dashboard & Alerts ◄── Risk Classification ◄── Risk Scoring ◄─�
 
 | Stage | Module | Status |
 |---|---|---|
-| Frame extraction + detection | `src/detection/detect.py` | ✅ Working starter |
-| Tracking (ByteTrack via `model.track()`) | `src/tracking/track.py` | ✅ Working starter |
-| Runway zones (polygons) | `src/risk_scoring/zones.py`, `zone_editor.py` | ✅ Working starter |
-| Feature extraction | `src/risk_scoring/features.py` | ✅ Working starter |
-| Risk scoring + classification | `src/risk_scoring/` | ⏳ Planned |
-| Dashboard + alerts | `src/dashboard/` | ⏳ Planned |
+| Frame extraction + detection | `src/detection/detect.py` | ✅ |
+| Fine-tuning on AirBirds | `src/detection/train.py`, `configs/airbirds.yaml` | ✅ ready (needs data) |
+| Tracking (ByteTrack via `model.track()`) | `src/tracking/track.py` | ✅ |
+| Runway zones (polygons) | `src/risk_scoring/zones.py`, `zone_editor.py` | ✅ |
+| Feature extraction | `src/risk_scoring/features.py` | ✅ |
+| Risk scoring + classification + alerts | `src/risk_scoring/risk.py`, `configs/risk.yaml` | ✅ |
+| End-to-end live pipeline + SQLite alert log | `src/pipeline.py`, `src/alert_log.py` | ✅ |
+| Dashboard | `src/dashboard/app.py` | ✅ |
+| Optional ML classifier | `notebooks/risk_classifier_colab.ipynb`, `src/risk_scoring/ml_model.py` | ✅ (runs on Colab) |
+
+## Quick start
+
+```powershell
+.venv\Scripts\Activate.ps1
+
+# 1. Draw the runway zone for your camera once
+python -m src.risk_scoring.zone_editor --source data/videos/<clip>.mp4 --out configs/zones/cam1.json --names runway
+
+# 2. Open the dashboard, pick the video + zones, press Run
+streamlit run src/dashboard/app.py
+```
 
 ## Risk scoring
 
@@ -37,123 +52,119 @@ A transparent weighted formula, not a black box:
 risk_score = w1·count + w2·speed + w3·proximity_to_runway_zone + w4·flock_size + w5·time_of_day
 ```
 
-Each feature is normalised to [0, 1] and the weights sum to 1, so the score is in [0, 1]:
+Each term is normalised to [0, 1] and the weights sum to 1, so the score is in [0, 1].
+Everything is set in [`configs/risk.yaml`](configs/risk.yaml):
+
+| Term | Normalisation (default) | Weight |
+|---|---|---|
+| count | birds ÷ 20, capped at 1 | 0.20 |
+| speed | fastest bird ÷ 0.5 diag/s, capped at 1 | 0.15 |
+| proximity | 1 inside a runway zone → 0 at 0.3 diag away | 0.35 |
+| flock_size | largest flock ÷ 10, capped at 1 | 0.15 |
+| time_of_day | 1.0 at dawn (05–09) and dusk (17–20), 0.4 otherwise, 0.5 if unknown | 0.15 |
 
 | Level | Score |
 |---|---|
-| 🟢 Low | < 0.3 |
-| 🟡 Medium | 0.3 – 0.6 |
-| 🔴 High | > 0.6 |
+| ✔ Low | < 0.3 |
+| ▲ Medium | 0.3 – 0.6 |
+| ⬣ High | ≥ 0.6 |
 
-Weights and thresholds are tunable. An optional scikit-learn classifier can be compared
-against the formula as a baseline.
+- **No birds → no risk:** the time-of-day term only counts when birds are present.
+- **Smoothing:** the score is a rolling mean over 15 frames to avoid flicker.
+- **Explainable:** every output keeps each term's weighted contribution (`c_*`) and the
+  largest one (`top_factor`), so each alert says *why* (e.g. "runway proximity").
+- **Alerts:** consecutive frames at Medium or above form an alert episode; episodes
+  shorter than 1 s are ignored and gaps under 2 s are merged.
 
-## Project structure
-
-```
-AviSense/
-├── data/
-│   ├── raw/airbirds/     # AirBirds dataset (download separately — see data/README.md)
-│   ├── videos/           # test footage
-│   └── processed/        # extracted features, logs
-├── models/               # trained / fine-tuned weights (.pt) — git-ignored
-├── configs/              # dataset YAMLs (airbirds.yaml), zones/ (runway polygons)
-├── notebooks/            # exploration, training, evaluation
-├── outputs/              # annotated videos, reports — git-ignored
-├── src/
-│   ├── detection/        # YOLO bird detection
-│   ├── tracking/         # ByteTrack multi-object tracking
-│   ├── risk_scoring/     # features + risk formula + classifier
-│   └── dashboard/        # Streamlit app
-├── tests/
-├── requirements.txt
-└── README.md
-```
-
-## Setup (Windows, NVIDIA GPU)
-
-**Python:** use **3.10 – 3.12**. Newer versions may not yet have wheels for all
-dependencies.
+## Dashboard
 
 ```powershell
-# 1. Create and activate a virtual environment
-py -3.12 -m venv .venv
-.venv\Scripts\Activate.ps1
-
-# 2. Install PyTorch with CUDA FIRST.
-#    RTX 50-series (Blackwell) GPUs need CUDA 12.8+ builds (cu128).
-#    Check https://pytorch.org/get-started/locally/ for the current command.
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
-
-# 3. Install the rest
-pip install -r requirements.txt
-
-# 4. Verify the GPU is visible
-python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+streamlit run src/dashboard/app.py
 ```
 
-No NVIDIA GPU? Skip step 2. pip will install the CPU build, which is slower but
-fine for development. Use Google Colab for training.
+Pick a video from `data/videos/` (or upload one, or use a webcam), a zones file from
+`configs/zones/`, and detector weights (fine-tuned weights in `models/` appear
+automatically). Weights and thresholds can be adjusted live in the sidebar.
 
-## Running detection
+It shows the annotated video (zones, tracked birds, trails, risk banner), the current
+risk level, bird count / flock / distance / speed, a risk-over-time chart with the
+thresholds, a per-factor contribution chart, pop-up alerts, and the alert history
+from SQLite (`outputs/alerts.db`).
 
-Put a test video in `data/videos/`, then from the project root:
+The video start time (for the time-of-day term) is read from the filename when it
+contains a `YYYYMMDDhhmmss` stamp (AirBirds style), or can be set in the sidebar.
+
+## Command-line pipeline
+
+The same pipeline without the dashboard:
 
 ```powershell
-# Live preview (press q to quit)
-python -m src.detection.detect --source data/videos/sample.mp4 --show
-
-# Save an annotated video
-python -m src.detection.detect --source data/videos/sample.mp4 --save outputs/annotated.mp4
-
-# Webcam
-python -m src.detection.detect --source 0 --show
-
-# Use your fine-tuned AirBirds weights
-python -m src.detection.detect --source data/videos/sample.mp4 --weights models/airbirds_best.pt --show
+python -m src.pipeline --source data/videos/<clip>.mp4 --zones configs/zones/cam1.json `
+    --weights models/airbirds_yolo11n_1280.pt --imgsz 1280 --save outputs/pipeline.mp4 --db outputs/alerts.db
 ```
 
-On the first run, `yolo11n.pt` (COCO-pretrained, about 5 MB) downloads automatically.
-Detection is filtered to the `bird` class by default. Pass `--all-classes` to turn
-this off.
-
-Useful flags: `--conf 0.25` (confidence threshold), `--imgsz 640` (use a larger value
-such as 1280 for small or distant birds), `--device 0` or `--device cpu`.
-
-## Running tracking
-
-Tracking assigns each bird a persistent ID, draws motion trails, and can export
-one CSV row per bird per frame (input to feature extraction):
+Or step by step, producing CSVs at each stage (used for the ML notebook and analysis):
 
 ```powershell
-python -m src.tracking.track --source data/videos/sample.mp4 --show
-python -m src.tracking.track --source data/videos/sample.mp4 --save outputs/tracked.mp4 --csv data/processed/tracks.csv
+python -m src.tracking.track --source data/videos/<clip>.mp4 --csv data/processed/<clip>_tracks.csv --imgsz 1280
+python -m src.risk_scoring.features --tracks data/processed/<clip>_tracks.csv --zones configs/zones/cam1.json `
+    --out data/processed/<clip>_features.csv --start-time 2021-06-28T09:08:56
+python -m src.risk_scoring.risk --features data/processed/<clip>_features.csv --out data/processed/<clip>_risk.csv `
+    --alerts-out data/processed/<clip>_alerts.csv
 ```
 
-CSV columns: `frame_idx, time_s, track_id, class_id, class_name, confidence,
-x1, y1, x2, y2, cx, cy, frame_w, frame_h`. The default `--conf` is 0.1 because
-ByteTrack uses low-score detections to keep tracks alive.
+The live pipeline and the step-by-step commands compute identical scores (checked in
+`tests/test_pipeline.py`).
 
-## Runway zones and features
+## Training on AirBirds
 
-Draw the runway (and any other protected areas) once per camera. Vertices are
-saved as fractions of the frame size, so the file works at any resolution:
+Data: train = chunk 0, val = chunk 9 (the authors' suggestion), test = D02 0628 —
+see [`data/README.md`](data/README.md).
 
 ```powershell
-python -m src.risk_scoring.zone_editor --source data/videos/sample.mp4 --out configs/zones/cam1.json --names runway
+python -m src.detection.train                               # yolo11n, imgsz 1280, 50 epochs, AutoBatch
+python -m src.detection.train --model yolo11s.pt --epochs 100
+python -m src.detection.train --resume                      # continue an interrupted run
+python -m src.detection.train --evaluate models/airbirds_yolo11n_1280.pt   # test split only
 ```
 
+Birds are ~5–10 px in 1920×1080 frames, so training uses `imgsz=1280` and a milder
+scale augmentation. Runs are saved in `runs/detect/`; the best weights are copied to
+`models/airbirds_<model>_<imgsz>.pt` and evaluated on the test split. Plug the laptop
+in and use the Best Performance power mode — on battery the GPU is heavily throttled.
+
+## Optional ML risk classifier (Google Colab)
+
+[`notebooks/risk_classifier_colab.ipynb`](notebooks/risk_classifier_colab.ipynb) trains
+a classifier on **human-labelled clips** and compares it with the formula:
+
+1. Produce `<clip>_risk.csv` with the step-by-step commands above.
+2. Watch the clip and write `<clip>_labels.csv` with time ranges:
+   `start_s,end_s,label` (label = Low / Medium / High).
+3. Upload both to Colab and run the notebook. It cross-validates by video and compares
+   the current formula, logistic regression, random forest, and **the formula with
+   weights learned from your labels** (it prints suggested `risk.yaml` values).
+4. Download `risk_model.json` into `models/` and use it locally:
+   `python -m src.risk_scoring.risk ... --ml-model models/risk_model.json` (adds `ml_level`).
+
+The exported model runs with NumPy only.
+
+## Individual stages
+
+**Detection** — `python -m src.detection.detect --source <video> --show`
+(`--weights`, `--imgsz 1280`, `--conf`, `--save`, `--all-classes` for testing on non-bird footage).
+
+**Tracking** — `python -m src.tracking.track --source <video> --show --csv <out.csv>`.
+CSV columns: `frame_idx, time_s, track_id, class_id, class_name, confidence, x1, y1, x2,
+y2, cx, cy, frame_w, frame_h`. Default `--conf` is 0.1 because ByteTrack uses
+low-score detections to keep tracks alive.
+
+**Runway zones** — `python -m src.risk_scoring.zone_editor --source <video or image> --out configs/zones/<cam>.json`.
 Left click adds a point, right click undoes, `n` starts the next zone, `s` saves, `q` quits.
+Vertices are stored as fractions of the frame size, so a zone works at any resolution.
 
-Then turn a tracks CSV into features:
-
-```powershell
-python -m src.risk_scoring.features --tracks data/processed/tracks.csv --zones configs/zones/cam1.json `
-    --out data/processed/frame_features.csv --start-time 2021-06-28T09:08:56
-```
-
-Distances and speeds are fractions of the frame diagonal (speed 0.1 = 10% of the
-diagonal per second).
+**Features** — distances and speeds are fractions of the frame diagonal (speed 0.1 =
+10% of the diagonal per second):
 
 | Per frame | Meaning |
 |---|---|
@@ -164,6 +175,51 @@ diagonal per second).
 | `n_in_zone`, `n_approaching` | birds inside a zone; birds whose distance to a zone is shrinking |
 | `hour` | time of day (needs `--start-time`) |
 
+## Project structure
+
+```
+AviSense/
+├── configs/              # airbirds.yaml (dataset), risk.yaml (scoring), zones/ (runway polygons)
+├── data/
+│   ├── raw/airbirds/     # AirBirds subset (see data/README.md) — git-ignored
+│   ├── videos/           # test footage — git-ignored
+│   └── processed/        # tracks / features / risk CSVs — git-ignored
+├── models/               # fine-tuned weights, risk_model.json — git-ignored
+├── notebooks/            # risk_classifier_colab.ipynb
+├── outputs/              # annotated videos, alerts.db — git-ignored
+├── src/
+│   ├── detection/        # detect.py, train.py
+│   ├── tracking/         # track.py
+│   ├── risk_scoring/     # zones, zone_editor, features, risk, ml_model
+│   ├── dashboard/        # app.py (Streamlit)
+│   ├── pipeline.py       # end-to-end live pipeline
+│   └── alert_log.py      # SQLite alert log
+└── tests/
+```
+
+## Setup (Windows, NVIDIA GPU)
+
+Developed on Python 3.14 with an RTX 5060 laptop GPU; Python 3.10+ should work.
+
+```powershell
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+
+# PyTorch with CUDA first. RTX 50-series (Blackwell) GPUs need CUDA 12.8+ builds (cu128).
+# Check https://pytorch.org/get-started/locally/ for the current command.
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+
+pip install -r requirements.txt
+python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+```
+
+No NVIDIA GPU? Skip the PyTorch step; pip installs the CPU build (slow for training —
+use Colab).
+
+**Windows Smart App Control / Application Control:** on the development laptop it
+blocks some SciPy DLLs, which also breaks scikit-learn. AviSense's core does not need
+either; the ML classifier runs on Colab instead and its exported model runs with NumPy.
+
 ## Tests
 
 ```powershell
@@ -172,17 +228,20 @@ python -m pytest -q tests
 
 ## Datasets
 
-- **Primary:** AirBirds (ACCV 2022): real airport imagery with YOLO-format bounding boxes.
-- **Supplementary:** CUB-200-2011, Roboflow Universe bird datasets, self-recorded footage.
+- **Primary:** AirBirds (ACCV 2022) — real airport imagery with YOLO-format labels,
+  from the authors' Hugging Face mirror. CC BY-NC-SA 4.0; cite Sun et al., ACCV 2022.
+- **Supplementary (optional):** FBD-SV-2024 flying-bird surveillance videos, Roboflow
+  Universe bird datasets, self-recorded footage.
 
-See [`data/README.md`](data/README.md) for where to place them.
+See [`data/README.md`](data/README.md).
 
 ## Roadmap
 
 1. ✅ Detection on video (COCO-pretrained YOLO11n)
-2. Fine-tune on AirBirds (`notebooks/`), save best weights to `models/`
-3. ✅ Tracking with ByteTrack (`model.track(persist=True, tracker="bytetrack.yaml")`)
-4. ✅ Per-track features: speed, heading, count, flock size, distance to runway zone polygon
-5. Weighted risk score and Low/Med/High classification
-6. Streamlit dashboard with live video, risk gauge and alert log (SQLite)
-7. Evaluation: detection mAP, tracking consistency, risk-level agreement with labelled clips
+2. ⏳ Fine-tune on AirBirds (script ready; waiting on data download)
+3. ✅ Tracking with ByteTrack
+4. ✅ Features: speed, heading, count, flock size, distance to runway polygon, time of day
+5. ✅ Weighted risk score, Low/Medium/High, explainable alerts
+6. ✅ Streamlit dashboard with live video, risk level, charts and SQLite alert log
+7. ⏳ Evaluation: detection mAP on the test split, tracking consistency, risk-level
+   agreement with labelled clips (Colab notebook)
