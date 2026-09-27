@@ -23,7 +23,7 @@ Dashboard & Alerts ◄── Risk Classification ◄── Risk Scoring ◄─�
 | Stage | Module | Status |
 |---|---|---|
 | Frame extraction + detection | `src/detection/detect.py` | ✅ |
-| Fine-tuning on AirBirds | `src/detection/train.py`, `configs/airbirds.yaml` | ✅ ready (needs data) |
+| Fine-tuning on AirBirds | `src/detection/train.py`, `configs/airbirds.yaml` | ✅ first run done (weak — see results) |
 | Tracking (ByteTrack via `model.track()`) | `src/tracking/track.py` | ✅ |
 | Runway zones (polygons) | `src/risk_scoring/zones.py`, `zone_editor.py` | ✅ |
 | Feature extraction | `src/risk_scoring/features.py` | ✅ |
@@ -148,6 +148,21 @@ python -m src.frames_to_video --images data/raw/airbirds/images/val --prefix 202
 Baseline: on a 300-frame val clip (1,036 ground-truth birds), the COCO-pretrained
 YOLO11n finds **0** birds at both `imgsz` 640 and 1280 — fine-tuning is essential.
 
+### Results: YOLO11n, imgsz 1280 (`models/airbirds_yolo11n_1280.pt`)
+
+Batch 8, patience 15, `scale=0.2`, RTX 5060 laptop GPU. Early stopping ended the run
+after 23 of 50 epochs (2.0 h); the best checkpoint is from epoch 8.
+
+| Split | Images | Birds | Precision | Recall | mAP50 | mAP50-95 |
+|---|---|---|---|---|---|---|
+| val (chunk 9) | 8,312 | 39,641 | 0.356 | 0.209 | 0.139 | 0.040 |
+| test (D02 0628) | 10,000 | 1,148 | 0.235 | 0.323 | 0.142 | 0.030 |
+
+Inference is ~5 ms/image at 1280. Validation mAP50 plateaued at 0.10–0.14 from epoch 6
+onwards, so the small model at this resolution is the limit, not the training length.
+Next things to try: tiled (SAHI-style) training and inference so birds are larger
+relative to the input, `yolo11s`, more training chunks, and longer patience.
+
 ## Optional ML risk classifier (Google Colab)
 
 [`notebooks/risk_classifier_colab.ipynb`](notebooks/risk_classifier_colab.ipynb) trains
@@ -253,10 +268,10 @@ See [`data/README.md`](data/README.md).
 ## Roadmap
 
 1. ✅ Detection on video (COCO-pretrained YOLO11n)
-2. ⏳ Fine-tune on AirBirds (script ready; waiting on data download)
+2. ✅ Fine-tune on AirBirds — YOLO11n baseline: test mAP50 0.142 (needs improving: tiling / larger model)
 3. ✅ Tracking with ByteTrack
 4. ✅ Features: speed, heading, count, flock size, distance to runway polygon, time of day
 5. ✅ Weighted risk score, Low/Medium/High, explainable alerts
 6. ✅ Streamlit dashboard with live video, risk level, charts and SQLite alert log
-7. ⏳ Evaluation: detection mAP on the test split, tracking consistency, risk-level
-   agreement with labelled clips (Colab notebook)
+7. ⏳ Evaluation: detection mAP on the test split ✅; tracking consistency and
+   risk-level agreement with labelled clips (Colab notebook) still to do
