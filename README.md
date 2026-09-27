@@ -24,7 +24,8 @@ Dashboard & Alerts ◄── Risk Classification ◄── Risk Scoring ◄─�
 |---|---|---|
 | Frame extraction + detection | `src/detection/detect.py` | ✅ Working starter |
 | Tracking (ByteTrack via `model.track()`) | `src/tracking/track.py` | ✅ Working starter |
-| Feature extraction | `src/risk_scoring/` | ⏳ Planned |
+| Runway zones (polygons) | `src/risk_scoring/zones.py`, `zone_editor.py` | ✅ Working starter |
+| Feature extraction | `src/risk_scoring/features.py` | ✅ Working starter |
 | Risk scoring + classification | `src/risk_scoring/` | ⏳ Planned |
 | Dashboard + alerts | `src/dashboard/` | ⏳ Planned |
 
@@ -56,7 +57,7 @@ AviSense/
 │   ├── videos/           # test footage
 │   └── processed/        # extracted features, logs
 ├── models/               # trained / fine-tuned weights (.pt) — git-ignored
-├── configs/              # dataset YAMLs (airbirds.yaml)
+├── configs/              # dataset YAMLs (airbirds.yaml), zones/ (runway polygons)
 ├── notebooks/            # exploration, training, evaluation
 ├── outputs/              # annotated videos, reports — git-ignored
 ├── src/
@@ -133,6 +134,36 @@ CSV columns: `frame_idx, time_s, track_id, class_id, class_name, confidence,
 x1, y1, x2, y2, cx, cy, frame_w, frame_h`. The default `--conf` is 0.1 because
 ByteTrack uses low-score detections to keep tracks alive.
 
+## Runway zones and features
+
+Draw the runway (and any other protected areas) once per camera. Vertices are
+saved as fractions of the frame size, so the file works at any resolution:
+
+```powershell
+python -m src.risk_scoring.zone_editor --source data/videos/sample.mp4 --out configs/zones/cam1.json --names runway
+```
+
+Left click adds a point, right click undoes, `n` starts the next zone, `s` saves, `q` quits.
+
+Then turn a tracks CSV into features:
+
+```powershell
+python -m src.risk_scoring.features --tracks data/processed/tracks.csv --zones configs/zones/cam1.json `
+    --out data/processed/frame_features.csv --start-time 2021-06-28T09:08:56
+```
+
+Distances and speeds are fractions of the frame diagonal (speed 0.1 = 10% of the
+diagonal per second).
+
+| Per frame | Meaning |
+|---|---|
+| `count` | birds tracked in the frame |
+| `flock_size`, `n_flocks` | largest group of birds within `--flock-radius` of each other; number of groups |
+| `max_speed`, `mean_speed` | bird speed (diag/s) |
+| `min_dist_to_zone` | nearest bird's distance to a zone (0 = inside; empty if no birds) |
+| `n_in_zone`, `n_approaching` | birds inside a zone; birds whose distance to a zone is shrinking |
+| `hour` | time of day (needs `--start-time`) |
+
 ## Tests
 
 ```powershell
@@ -151,7 +182,7 @@ See [`data/README.md`](data/README.md) for where to place them.
 1. ✅ Detection on video (COCO-pretrained YOLO11n)
 2. Fine-tune on AirBirds (`notebooks/`), save best weights to `models/`
 3. ✅ Tracking with ByteTrack (`model.track(persist=True, tracker="bytetrack.yaml")`)
-4. Per-track features: speed, heading, count, flock size, distance to runway zone polygon
+4. ✅ Per-track features: speed, heading, count, flock size, distance to runway zone polygon
 5. Weighted risk score and Low/Med/High classification
 6. Streamlit dashboard with live video, risk gauge and alert log (SQLite)
 7. Evaluation: detection mAP, tracking consistency, risk-level agreement with labelled clips
