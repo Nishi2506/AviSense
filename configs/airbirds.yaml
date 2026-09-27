@@ -1,0 +1,14 @@
+# AirBirds dataset config for Ultralytics YOLO training.
+# Run training from the project root so the relative path resolves, e.g.:
+#   yolo detect train data=configs/airbirds.yaml model=yolo11n.pt imgsz=1280
+#
+# Splits (see data/README.md):
+#   train = chunk 0, val = chunk 9 (authors' suggestion), test = D02_20210628090856
+
+path: data/raw/airbirds
+train: images/train
+val: images/val
+test: images/test
+
+names:
+  0: bird

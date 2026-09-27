@@ -23,7 +23,7 @@ Dashboard & Alerts ◄── Risk Classification ◄── Risk Scoring ◄─�
 | Stage | Module | Status |
 |---|---|---|
 | Frame extraction + detection | `src/detection/detect.py` | ✅ Working starter |
-| Tracking (ByteTrack via `model.track()`) | `src/tracking/` | ⏳ Planned |
+| Tracking (ByteTrack via `model.track()`) | `src/tracking/track.py` | ✅ Working starter |
 | Feature extraction | `src/risk_scoring/` | ⏳ Planned |
 | Risk scoring + classification | `src/risk_scoring/` | ⏳ Planned |
 | Dashboard + alerts | `src/dashboard/` | ⏳ Planned |
@@ -56,6 +56,7 @@ AviSense/
 │   ├── videos/           # test footage
 │   └── processed/        # extracted features, logs
 ├── models/               # trained / fine-tuned weights (.pt) — git-ignored
+├── configs/              # dataset YAMLs (airbirds.yaml)
 ├── notebooks/            # exploration, training, evaluation
 ├── outputs/              # annotated videos, reports — git-ignored
 ├── src/
@@ -118,6 +119,26 @@ this off.
 Useful flags: `--conf 0.25` (confidence threshold), `--imgsz 640` (use a larger value
 such as 1280 for small or distant birds), `--device 0` or `--device cpu`.
 
+## Running tracking
+
+Tracking assigns each bird a persistent ID, draws motion trails, and can export
+one CSV row per bird per frame (input to feature extraction):
+
+```powershell
+python -m src.tracking.track --source data/videos/sample.mp4 --show
+python -m src.tracking.track --source data/videos/sample.mp4 --save outputs/tracked.mp4 --csv data/processed/tracks.csv
+```
+
+CSV columns: `frame_idx, time_s, track_id, class_id, class_name, confidence,
+x1, y1, x2, y2, cx, cy, frame_w, frame_h`. The default `--conf` is 0.1 because
+ByteTrack uses low-score detections to keep tracks alive.
+
+## Tests
+
+```powershell
+python -m pytest -q tests
+```
+
 ## Datasets
 
 - **Primary:** AirBirds (ACCV 2022): real airport imagery with YOLO-format bounding boxes.
@@ -129,7 +150,7 @@ See [`data/README.md`](data/README.md) for where to place them.
 
 1. ✅ Detection on video (COCO-pretrained YOLO11n)
 2. Fine-tune on AirBirds (`notebooks/`), save best weights to `models/`
-3. Tracking with ByteTrack (`model.track(persist=True, tracker="bytetrack.yaml")`)
+3. ✅ Tracking with ByteTrack (`model.track(persist=True, tracker="bytetrack.yaml")`)
 4. Per-track features: speed, heading, count, flock size, distance to runway zone polygon
 5. Weighted risk score and Low/Med/High classification
 6. Streamlit dashboard with live video, risk gauge and alert log (SQLite)
