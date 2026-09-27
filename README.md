@@ -133,6 +133,21 @@ scale augmentation. Runs are saved in `runs/detect/`; the best weights are copie
 `models/airbirds_<model>_<imgsz>.pt` and evaluated on the test split. Plug the laptop
 in and use the Best Performance power mode — on battery the GPU is heavily throttled.
 
+## Test videos from AirBirds
+
+AirBirds frames are consecutive per camera, so sequences can be stitched into videos
+for the tracker and dashboard (the test chunk is 10,000 consecutive frames from camera
+D02). The capture frame rate is not documented; `--fps` defaults to 25.
+
+```powershell
+python -m src.frames_to_video --images data/raw/airbirds/images/test --prefix D02_20210628090856 --count 1500
+python -m src.frames_to_video --images data/raw/airbirds/images/val --prefix 20201111_sljc_1 --count 300 `
+    --labels data/raw/airbirds/labels/val --out-dir outputs     # draw ground-truth boxes
+```
+
+Baseline: on a 300-frame val clip (1,036 ground-truth birds), the COCO-pretrained
+YOLO11n finds **0** birds at both `imgsz` 640 and 1280 — fine-tuning is essential.
+
 ## Optional ML risk classifier (Google Colab)
 
 [`notebooks/risk_classifier_colab.ipynb`](notebooks/risk_classifier_colab.ipynb) trains
