@@ -181,9 +181,12 @@ Test split = D02 0628, 10,000 full frames, 1,148 birds. RTX 5060 laptop GPU.
 | Model (`models/…`) | Training | Test imgsz | Precision | Recall | mAP50 | mAP50-95 |
 |---|---|---|---|---|---|---|
 | `airbirds_yolo11n_1280.pt` | full frames @1280, batch 8; early-stopped at epoch 23 (best 8), 2.0 h | 1280 | 0.235 | 0.323 | 0.142 | 0.030 |
-| `airbirds_tiles_yolo11n_640.pt` | tiles @640, batch 32; early-stopped at epoch 58 (best 33), 2.4 h | 1920 | 0.223 | **0.462** | **0.241** | **0.071** |
+| `airbirds_tiles_yolo11n_640.pt` | tiles @640, batch 32; early-stopped at epoch 58 (best 33), 2.4 h | 1920 | 0.223 | 0.462 | **0.241** | **0.071** |
+| `airbirds_tiles_yolo11s_640.pt` | tiles @640, batch 16; early-stopped at epoch 57 (best 32), 4.0 h | 1920 | 0.183 | **0.503** | 0.169 | 0.050 |
 
-Native-resolution tiles raise test mAP50 by 70% and recall from 32% to 46%. The
+Native-resolution tiles raise test mAP50 by 70% and recall from 32% to 46%. The larger
+`yolo11s` matched `yolo11n` on validation (mAP50 ~0.20) but did worse on the test
+camera: slightly higher recall, more false positives. `yolo11n` tiles is the default. The
 full-frame model plateaued at val mAP50 0.10–0.14 from epoch 6; the tiled model kept
 improving until epoch 33. Precision is still low (~0.22): the detector fires on some
 specks of sky and horizon clutter, which shows up as false alerts in the pipeline.
