@@ -63,10 +63,12 @@ def distance_to_zones(x: float, y: float, zones: list[Zone], frame_w: int, frame
 def draw_zones(frame: np.ndarray, zones: list[Zone], color=(0, 0, 255)) -> np.ndarray:
     h, w = frame.shape[:2]
     overlay = frame.copy()
-    for z in zones:
-        pts = z.to_pixels(w, h).astype(np.int32)
+    polys = [z.to_pixels(w, h).astype(np.int32) for z in zones]
+    for pts in polys:
         cv2.fillPoly(overlay, [pts], color)
-        cv2.polylines(frame, [pts], True, color, 2)
-        x, y = pts[0, 0]
-        cv2.putText(frame, z.name, (int(x), int(y) - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2, cv2.LINE_AA)
-    return cv2.addWeighted(overlay, 0.25, frame, 0.75, 0)
+    out = cv2.addWeighted(overlay, 0.25, frame, 0.75, 0)
+    for z, pts in zip(zones, polys):  # outline and label on top of the fill
+        cv2.polylines(out, [pts], True, color, 2)
+        x, y = pts[:, 0, :].min(axis=0)
+        cv2.putText(out, z.name, (int(x) + 6, int(y) + 22), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2, cv2.LINE_AA)
+    return out

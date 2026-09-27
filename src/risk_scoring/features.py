@@ -84,6 +84,34 @@ def _flocks(points: np.ndarray, radius: float) -> tuple[int, int]:
     return max(sizes), len(sizes)
 
 
+FRAME_COLUMNS = ["frame_idx", "time_s", "count", "flock_size", "n_flocks", "max_speed",
+                 "mean_speed", "min_dist_to_zone", "n_in_zone", "n_approaching"]
+
+
+def aggregate_frame(f: pd.DataFrame, flock_radius: float = 0.05) -> dict:
+    """Per-frame features from one frame's per-track feature rows (may be empty)."""
+    if f.empty:
+        return {"count": 0, "flock_size": 0, "n_flocks": 0, "max_speed": 0.0, "mean_speed": 0.0,
+                "min_dist_to_zone": np.nan, "n_in_zone": 0, "n_approaching": 0}
+    diag = float(np.hypot(f["frame_w"].iloc[0], f["frame_h"].iloc[0]))
+    flock_size, n_flocks = _flocks(f[["cx", "cy"]].to_numpy() / diag, flock_radius)
+    return {
+        "count": len(f),
+        "flock_size": flock_size,
+        "n_flocks": n_flocks,
+        "max_speed": float(f["speed"].max()),
+        "mean_speed": float(f["speed"].mean()),
+        "min_dist_to_zone": float(f["dist_to_zone"].min()),
+        "n_in_zone": int(f["in_zone"].sum()),
+        "n_approaching": int((f["approach_rate"] > 0).sum()),
+    }
+
+
+def hour_of_day(start_time: datetime, time_s: float) -> float:
+    t = start_time + timedelta(seconds=float(time_s))
+    return t.hour + t.minute / 60
+
+
 def frame_features(
     tf: pd.DataFrame,
     flock_radius: float = 0.05,
@@ -98,26 +126,9 @@ def frame_features(
     n_frames: total frames in the video, so trailing frames with no birds are included.
     """
     tf = tf[tf["track_age"] >= min_track_age]
-    rows = []
-    for frame_idx, f in tf.groupby("frame_idx"):
-        diag = float(np.hypot(f["frame_w"].iloc[0], f["frame_h"].iloc[0]))
-        flock_size, n_flocks = _flocks(f[["cx", "cy"]].to_numpy() / diag, flock_radius)
-        rows.append({
-            "frame_idx": frame_idx,
-            "time_s": f["time_s"].iloc[0],
-            "count": len(f),
-            "flock_size": flock_size,
-            "n_flocks": n_flocks,
-            "max_speed": f["speed"].max(),
-            "mean_speed": f["speed"].mean(),
-            "min_dist_to_zone": f["dist_to_zone"].min(),
-            "n_in_zone": int(f["in_zone"].sum()),
-            "n_approaching": int((f["approach_rate"] > 0).sum()),
-        })
-
-    cols = ["frame_idx", "time_s", "count", "flock_size", "n_flocks", "max_speed",
-            "mean_speed", "min_dist_to_zone", "n_in_zone", "n_approaching"]
-    ff = pd.DataFrame(rows, columns=cols)
+    rows = [aggregate_frame(f, flock_radius) | {"frame_idx": frame_idx, "time_s": f["time_s"].iloc[0]}
+            for frame_idx, f in tf.groupby("frame_idx")]
+    ff = pd.DataFrame(rows, columns=FRAME_COLUMNS)
 
     # Include frames with no birds so the timeline has no gaps.
     last = (n_frames - 1) if n_frames else int(tf["frame_idx"].max()) if len(tf) else -1
@@ -131,8 +142,7 @@ def frame_features(
     ff = ff.reset_index().rename(columns={"index": "frame_idx"})
 
     if start_time is not None:
-        ts = [start_time + timedelta(seconds=float(t)) for t in ff["time_s"]]
-        ff["hour"] = [t.hour + t.minute / 60 for t in ts]
+        ff["hour"] = [hour_of_day(start_time, t) for t in ff["time_s"]]
     return ff
 
 
