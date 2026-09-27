@@ -1,0 +1,39 @@
+# AviSense risk scoring config.
+#
+#   risk_score = w_count*count + w_speed*speed + w_proximity*proximity
+#              + w_flock*flock_size + w_time*time_of_day
+#
+# Each term is first normalised to [0, 1] (see `normalise`), weights sum to 1,
+# so risk_score is in [0, 1]. All values here are starting points to tune.
+
+weights:
+  count: 0.20
+  speed: 0.15
+  proximity: 0.35       # closeness to runway zone matters most
+  flock_size: 0.15
+  time_of_day: 0.15
+
+normalise:
+  count_cap: 20         # this many birds (or more) -> 1.0
+  speed_cap: 0.5        # frame diagonals per second -> 1.0
+  proximity_range: 0.3  # distance (fraction of diagonal) at which proximity reaches 0; inside zone -> 1.0
+  flock_cap: 10         # flock of this size (or more) -> 1.0
+
+# Bird activity peaks around dawn and dusk. Hours are local time, [start, end).
+time_of_day:
+  windows:
+    - {start: 5.0, end: 9.0, value: 1.0}    # dawn
+    - {start: 17.0, end: 20.0, value: 1.0}  # dusk
+  default: 0.4          # other hours
+  unknown: 0.5          # when the video's start time is not given
+
+levels:                 # Low < medium; Medium < high; High >= high
+  medium: 0.3
+  high: 0.6
+
+smoothing_frames: 15    # rolling mean over this many frames (reduces flicker)
+
+alerts:
+  min_level: Medium     # open an alert episode at this level or above
+  min_duration_s: 1.0   # ignore shorter episodes
+  merge_gap_s: 2.0      # merge episodes separated by less than this
