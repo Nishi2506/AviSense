@@ -70,10 +70,13 @@ zone_choice = st.sidebar.selectbox("Runway zones", [p.name for p in zone_files],
                                    placeholder="Draw one with zone_editor" if not zone_files else "Choose zones")
 
 weights_files = ["yolo11n.pt"] + sorted(str(p.relative_to(ROOT)) for p in (ROOT / "models").glob("*.pt"))
-weights = st.sidebar.selectbox("Detector weights", weights_files, index=len(weights_files) - 1)
+tiled = [i for i, w in enumerate(weights_files) if "airbirds_tiles_" in w]  # best detectors (see README)
+weights = st.sidebar.selectbox("Detector weights", weights_files,
+                               index=tiled[0] if tiled else len(weights_files) - 1)
 
 with st.sidebar.expander("Detection settings"):
-    imgsz = st.select_slider("Image size", [640, 960, 1280, 1600, 1920], value=1280,
+    imgsz = st.select_slider("Image size", [640, 960, 1280, 1600, 1920],
+                             value=1920 if "airbirds_tiles_" in weights else 1280,
                              help="Larger finds smaller birds but runs slower. "
                                   "Use 1920 with tile-trained weights (airbirds_tiles_*).")
     conf = st.slider("Confidence threshold", 0.05, 0.9, 0.1, 0.05)
