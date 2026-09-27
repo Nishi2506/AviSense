@@ -23,8 +23,8 @@ Dashboard & Alerts ◄── Risk Classification ◄── Risk Scoring ◄─�
 | Stage | Module | Status |
 |---|---|---|
 | Frame extraction + detection | `src/detection/detect.py` | ✅ |
-| Fine-tuning on AirBirds | `src/detection/train.py`, `configs/airbirds.yaml` | ✅ first run done (weak — see results) |
-| Tracking (ByteTrack via `model.track()`) | `src/tracking/track.py` | ✅ |
+| Fine-tuning on AirBirds (native-resolution tiles) | `src/detection/make_tiles.py`, `train.py`, `configs/airbirds_tiles.yaml` | ✅ test mAP50 0.241 |
+| Tracking (ByteTrack, enlarged-box matching for tiny birds) | `src/tracking/track.py` | ✅ |
 | Runway zones (polygons) | `src/risk_scoring/zones.py`, `zone_editor.py` | ✅ |
 | Feature extraction | `src/risk_scoring/features.py` | ✅ |
 | Risk scoring + classification + alerts | `src/risk_scoring/risk.py`, `configs/risk.yaml` | ✅ |
@@ -43,6 +43,15 @@ python -m src.risk_scoring.zone_editor --source data/videos/<clip>.mp4 --out con
 # 2. Open the dashboard, pick the video + zones, press Run
 streamlit run src/dashboard/app.py
 ```
+
+Zones for the two AirBirds cameras used in testing are included:
+[`configs/zones/D02.json`](configs/zones/D02.json) (test sequence) and
+[`configs/zones/sljc.json`](configs/zones/sljc.json) (`20201112_sljc_2_rest`, val). They
+cover the paved strip visible behind the runway edge lights and were traced from a
+single frame, so check them against your own view before relying on them.
+
+For the best detector, pick `models/airbirds_tiles_yolo11n_640.pt` with **image size
+1920** (see [Training](#training-on-airbirds) for why).
 
 ## Risk scoring
 
@@ -100,13 +109,14 @@ The same pipeline without the dashboard:
 
 ```powershell
 python -m src.pipeline --source data/videos/<clip>.mp4 --zones configs/zones/cam1.json `
-    --weights models/airbirds_yolo11n_1280.pt --imgsz 1280 --save outputs/pipeline.mp4 --db outputs/alerts.db
+    --weights models/airbirds_tiles_yolo11n_640.pt --imgsz 1920 --save outputs/pipeline.mp4 --db outputs/alerts.db
 ```
 
 Or step by step, producing CSVs at each stage (used for the ML notebook and analysis):
 
 ```powershell
-python -m src.tracking.track --source data/videos/<clip>.mp4 --csv data/processed/<clip>_tracks.csv --imgsz 1280
+python -m src.tracking.track --source data/videos/<clip>.mp4 --csv data/processed/<clip>_tracks.csv `
+    --weights models/airbirds_tiles_yolo11n_640.pt --imgsz 1920
 python -m src.risk_scoring.features --tracks data/processed/<clip>_tracks.csv --zones configs/zones/cam1.json `
     --out data/processed/<clip>_features.csv --start-time 2021-06-28T09:08:56
 python -m src.risk_scoring.risk --features data/processed/<clip>_features.csv --out data/processed/<clip>_risk.csv `
@@ -121,17 +131,33 @@ The live pipeline and the step-by-step commands compute identical scores (checke
 Data: train = chunk 0, val = chunk 9 (the authors' suggestion), test = D02 0628 —
 see [`data/README.md`](data/README.md).
 
+Birds are ~5–10 px in 1920×1080 frames. Training on full frames at `imgsz` 1280
+shrinks them further, so the recommended setup trains on **640×640 crops at native
+resolution** and runs the model on **full frames at `imgsz` 1920**. YOLO is fully
+convolutional, so a bird is the same pixel size in training and at inference, and
+tracking and the pipeline work on whole frames unchanged.
+
 ```powershell
+# Tiled (recommended): cut train + val into 640 px tiles in data/processed/airbirds_tiles (~5.6 GB)
+python -m src.detection.make_tiles
+python -m src.detection.train --data configs/airbirds_tiles.yaml --imgsz 640 --batch 32 --epochs 80 `
+    --patience 25 --name airbirds_tiles_yolo11n_640 --test-data configs/airbirds.yaml --test-imgsz 1920
+
+# Full frames (original baseline)
 python -m src.detection.train                               # yolo11n, imgsz 1280, 50 epochs, batch 8
-python -m src.detection.train --model yolo11s.pt --epochs 100
-python -m src.detection.train --resume                      # continue an interrupted run
-python -m src.detection.train --evaluate models/airbirds_yolo11n_1280.pt   # test split only
+
+python -m src.detection.train --resume --name <run>          # continue an interrupted run
+python -m src.detection.train --evaluate models/airbirds_tiles_yolo11n_640.pt `
+    --test-data configs/airbirds.yaml --imgsz 1920          # test split only
 ```
 
-Birds are ~5–10 px in 1920×1080 frames, so training uses `imgsz=1280` and a milder
-scale augmentation. Runs are saved in `runs/detect/`; the best weights are copied to
-`models/airbirds_<model>_<imgsz>.pt` and evaluated on the test split. Plug the laptop
-in and use the Best Performance power mode — on battery the GPU is heavily throttled.
+`make_tiles` keeps every tile with a bird, 10% of empty tiles (`--empty-keep`) and every
+4th val frame (`--val-every`; consecutive frames are near-duplicates). Train: 10,000
+frames → 20,814 tiles; val: 2,078 frames → 5,507 tiles. Training uses a milder scale
+augmentation (`scale=0.2`) so birds aren't shrunk to nothing. Runs are saved in
+`runs/detect/`; the best weights are copied to `models/<run name>.pt` and evaluated on
+the full-frame test split. Plug the laptop in and use the Best Performance power
+mode — on battery the GPU is heavily throttled.
 
 ## Test videos from AirBirds
 
@@ -148,20 +174,20 @@ python -m src.frames_to_video --images data/raw/airbirds/images/val --prefix 202
 Baseline: on a 300-frame val clip (1,036 ground-truth birds), the COCO-pretrained
 YOLO11n finds **0** birds at both `imgsz` 640 and 1280 — fine-tuning is essential.
 
-### Results: YOLO11n, imgsz 1280 (`models/airbirds_yolo11n_1280.pt`)
+### Results
 
-Batch 8, patience 15, `scale=0.2`, RTX 5060 laptop GPU. Early stopping ended the run
-after 23 of 50 epochs (2.0 h); the best checkpoint is from epoch 8.
+Test split = D02 0628, 10,000 full frames, 1,148 birds. RTX 5060 laptop GPU.
 
-| Split | Images | Birds | Precision | Recall | mAP50 | mAP50-95 |
+| Model (`models/…`) | Training | Test imgsz | Precision | Recall | mAP50 | mAP50-95 |
 |---|---|---|---|---|---|---|
-| val (chunk 9) | 8,312 | 39,641 | 0.356 | 0.209 | 0.139 | 0.040 |
-| test (D02 0628) | 10,000 | 1,148 | 0.235 | 0.323 | 0.142 | 0.030 |
+| `airbirds_yolo11n_1280.pt` | full frames @1280, batch 8; early-stopped at epoch 23 (best 8), 2.0 h | 1280 | 0.235 | 0.323 | 0.142 | 0.030 |
+| `airbirds_tiles_yolo11n_640.pt` | tiles @640, batch 32; early-stopped at epoch 58 (best 33), 2.4 h | 1920 | 0.223 | **0.462** | **0.241** | **0.071** |
 
-Inference is ~5 ms/image at 1280. Validation mAP50 plateaued at 0.10–0.14 from epoch 6
-onwards, so the small model at this resolution is the limit, not the training length.
-Next things to try: tiled (SAHI-style) training and inference so birds are larger
-relative to the input, `yolo11s`, more training chunks, and longer patience.
+Native-resolution tiles raise test mAP50 by 70% and recall from 32% to 46%. The
+full-frame model plateaued at val mAP50 0.10–0.14 from epoch 6; the tiled model kept
+improving until epoch 33. Precision is still low (~0.22): the detector fires on some
+specks of sky and horizon clutter, which shows up as false alerts in the pipeline.
+The end-to-end pipeline runs at ~26 FPS on full 1920×1080 video with the tiled model.
 
 ## Optional ML risk classifier (Google Colab)
 
@@ -185,6 +211,11 @@ The exported model runs with NumPy only.
 (`--weights`, `--imgsz 1280`, `--conf`, `--save`, `--all-classes` for testing on non-bird footage).
 
 **Tracking** — `python -m src.tracking.track --source <video> --show --csv <out.csv>`.
+ByteTrack links boxes across frames by overlap, but AirBirds birds are ~7 px and move
+6–10 px per frame (median IoU between frames ~0.03), so plain ByteTrack almost never
+confirms a track. The tracker matches on boxes enlarged to at least `--assoc-size`
+(40 px) around each centre and reports the original boxes: on 300 val frames (554
+ground-truth birds) tracked detections went from 24 to 457.
 CSV columns: `frame_idx, time_s, track_id, class_id, class_name, confidence, x1, y1, x2,
 y2, cx, cy, frame_w, frame_h`. Default `--conf` is 0.1 because ByteTrack uses
 low-score detections to keep tracks alive.
@@ -268,8 +299,8 @@ See [`data/README.md`](data/README.md).
 ## Roadmap
 
 1. ✅ Detection on video (COCO-pretrained YOLO11n)
-2. ✅ Fine-tune on AirBirds — YOLO11n baseline: test mAP50 0.142 (needs improving: tiling / larger model)
-3. ✅ Tracking with ByteTrack
+2. ✅ Fine-tune on AirBirds — native-resolution tiles: test mAP50 0.241 (full-frame baseline 0.142)
+3. ✅ Tracking with ByteTrack (enlarged-box matching for tiny, fast birds)
 4. ✅ Features: speed, heading, count, flock size, distance to runway polygon, time of day
 5. ✅ Weighted risk score, Low/Medium/High, explainable alerts
 6. ✅ Streamlit dashboard with live video, risk level, charts and SQLite alert log

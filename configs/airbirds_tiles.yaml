@@ -1,0 +1,12 @@
+# AirBirds cut into native-resolution 640x640 tiles (python -m src.detection.make_tiles).
+# Train/val on tiles at imgsz 640; test on the untouched full frames at imgsz 1920 so
+# birds are the same pixel size as in training:
+#   python -m src.detection.train --data configs/airbirds_tiles.yaml --imgsz 640 \
+#       --test-data configs/airbirds.yaml --test-imgsz 1920
+
+path: data/processed/airbirds_tiles
+train: images/train
+val: images/val
+
+names:
+  0: bird

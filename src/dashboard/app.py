@@ -73,8 +73,9 @@ weights_files = ["yolo11n.pt"] + sorted(str(p.relative_to(ROOT)) for p in (ROOT 
 weights = st.sidebar.selectbox("Detector weights", weights_files, index=len(weights_files) - 1)
 
 with st.sidebar.expander("Detection settings"):
-    imgsz = st.select_slider("Image size", [640, 960, 1280, 1600], value=1280,
-                             help="Larger finds smaller birds but runs slower.")
+    imgsz = st.select_slider("Image size", [640, 960, 1280, 1600, 1920], value=1280,
+                             help="Larger finds smaller birds but runs slower. "
+                                  "Use 1920 with tile-trained weights (airbirds_tiles_*).")
     conf = st.slider("Confidence threshold", 0.05, 0.9, 0.1, 0.05)
     all_classes = st.checkbox("Detect all classes (testing only)")
     min_age = st.number_input("Ignore tracks younger than (frames)", 0, 30, 3)

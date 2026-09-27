@@ -1,10 +1,16 @@
-"""Multi-object bird tracking with ByteTrack (via Ultralytics model.track()).
+"""Multi-object bird tracking with ByteTrack (Ultralytics BYTETracker).
 
 Second stage of the AviSense pipeline:
     Video -> Detection (YOLO) -> Tracking (ByteTrack) -> Feature extraction -> ...
 
 Each bird gets a persistent track ID across frames. Per-frame tracks can be
 exported to CSV (one row per bird per frame) as input to feature extraction.
+
+ByteTrack links detections across frames by box overlap (IoU). AirBirds birds are
+~7 px and move ~6-10 px per frame, so a bird's boxes in consecutive frames barely
+overlap (median IoU ~0.03) and plain ByteTrack never confirms their tracks. The
+tracker therefore sees each box enlarged to at least --assoc-size px around its
+centre; the reported boxes are the detector's originals.
 
 Usage (from the project root):
     python -m src.tracking.track --source data/videos/sample.mp4 --show
@@ -24,11 +30,18 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from ultralytics.engine.results import Boxes
+from ultralytics.trackers.byte_tracker import BYTETracker
+from ultralytics.utils import YAML, IterableSimpleNamespace
+from ultralytics.utils.checks import check_yaml
+
 from src.detection.detect import DEFAULT_WEIGHTS, BirdDetector, Detection, iter_frames, source_fps
 
 # ByteTrack keeps low-score detections to extend existing tracks, so the
 # detector threshold is lower than for plain detection (Ultralytics default).
 DEFAULT_TRACK_CONF = 0.1
+# Minimum box side (px) the tracker associates on; see module docstring.
+DEFAULT_ASSOC_SIZE = 40.0
 
 
 @dataclass
@@ -57,37 +70,39 @@ class TrackHistory:
         return list(self._points)
 
 
-class BirdTracker:
-    """Wraps a BirdDetector's YOLO model with ByteTrack for persistent IDs."""
+def enlarge_boxes(data: np.ndarray, min_size: float) -> np.ndarray:
+    """Copy of Boxes data (x1, y1, x2, y2, conf, cls) with each side grown to >= min_size around its centre."""
+    out = data.copy()
+    c = (data[:, 0:2] + data[:, 2:4]) / 2
+    half = np.maximum(data[:, 2:4] - data[:, 0:2], min_size) / 2
+    out[:, 0:2], out[:, 2:4] = c - half, c + half
+    return out
 
-    def __init__(self, detector: BirdDetector, tracker_cfg: str = "bytetrack.yaml") -> None:
+
+class BirdTracker:
+    """Runs a BirdDetector's YOLO model and links detections with ByteTrack for persistent IDs."""
+
+    def __init__(self, detector: BirdDetector, tracker_cfg: str = "bytetrack.yaml",
+                 assoc_size: float = DEFAULT_ASSOC_SIZE) -> None:
         self.detector = detector
-        self.tracker_cfg = tracker_cfg
+        self.assoc_size = assoc_size
+        cfg = IterableSimpleNamespace(**YAML.load(check_yaml(tracker_cfg)))
+        if cfg.tracker_type != "bytetrack":
+            raise ValueError(f"Only bytetrack configs are supported, got {cfg.tracker_type!r}")
+        self.tracker = BYTETracker(args=cfg)
 
     def track(self, frame: np.ndarray, frame_idx: int = 0, time_s: float = 0.0) -> list[TrackedDetection]:
         d = self.detector
-        result = d.model.track(
-            frame,
-            persist=True,  # keep tracker state between calls
-            tracker=self.tracker_cfg,
-            conf=d.conf,
-            imgsz=d.imgsz,
-            device=d.device,
-            classes=d.classes,
-            verbose=False,
-        )[0]
-
-        boxes = result.boxes
-        if boxes.id is None:  # no confirmed tracks this frame
+        result = d.model.predict(frame, conf=d.conf, imgsz=d.imgsz, device=d.device,
+                                 classes=d.classes, verbose=False)[0]
+        data = result.boxes.data.cpu().numpy()
+        out = self.tracker.update(Boxes(enlarge_boxes(data, self.assoc_size), result.orig_shape), frame)
+        if len(out) == 0:  # no confirmed tracks (an empty 1-D array)
             return []
 
         tracks = []
-        for (x1, y1, x2, y2), conf, cls, tid in zip(
-            boxes.xyxy.cpu().numpy(),
-            boxes.conf.cpu().numpy(),
-            boxes.cls.cpu().numpy().astype(int),
-            boxes.id.cpu().numpy().astype(int),
-        ):
+        for tid, det_idx in zip(out[:, 4].astype(int), out[:, -1].astype(int)):  # confirmed tracks only
+            x1, y1, x2, y2, conf, cls = data[det_idx]
             tracks.append(
                 TrackedDetection(frame_idx, float(x1), float(y1), float(x2), float(y2),
                                  float(conf), int(cls), d.names[int(cls)],
@@ -121,7 +136,7 @@ CSV_FIELDS = ["frame_idx", "time_s", "track_id", "class_id", "class_name", "conf
 def run(args: argparse.Namespace) -> None:
     detector = BirdDetector(args.weights, args.conf, args.imgsz, args.device,
                             birds_only=not args.all_classes)
-    tracker = BirdTracker(detector, args.tracker)
+    tracker = BirdTracker(detector, args.tracker, args.assoc_size)
     history = TrackHistory(maxlen=args.trail)
     fps_src = source_fps(args.source)
 
@@ -186,7 +201,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--conf", type=float, default=DEFAULT_TRACK_CONF, help="Detector confidence threshold.")
     p.add_argument("--imgsz", type=int, default=640, help="Inference image size.")
     p.add_argument("--device", default=None, help="'0' for first GPU, 'cpu', or omit for auto.")
-    p.add_argument("--tracker", default="bytetrack.yaml", help="Tracker config (bytetrack.yaml / botsort.yaml).")
+    p.add_argument("--tracker", default="bytetrack.yaml", help="ByteTrack config YAML.")
+    p.add_argument("--assoc-size", type=float, default=DEFAULT_ASSOC_SIZE,
+                   help="Minimum box side (px) used for frame-to-frame matching of tiny birds.")
     p.add_argument("--trail", type=int, default=30, help="Trail length in frames.")
     p.add_argument("--all-classes", action="store_true", help="Do not filter to bird class.")
     p.add_argument("--show", action="store_true", help="Show a live preview window.")

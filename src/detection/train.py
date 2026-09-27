@@ -5,6 +5,9 @@ Usage (from the project root):
     python -m src.detection.train --model yolo11s.pt --epochs 100
     python -m src.detection.train --evaluate models/airbirds_yolo11n_1280.pt   # test split only
 
+    # Native-resolution tiles (src.detection.make_tiles), tested on full frames at 1920:
+    python -m src.detection.train --data configs/airbirds_tiles.yaml --imgsz 640         --test-data configs/airbirds.yaml --test-imgsz 1920
+
 Birds in AirBirds are ~5-10 px in 1920x1080 frames, hence imgsz 1280 and a
 milder scale augmentation than the default (0.5), which can shrink birds to
 nothing.
@@ -52,8 +55,9 @@ def train(args: argparse.Namespace) -> Path:
 
 
 def evaluate(weights: str | Path, args: argparse.Namespace) -> None:
-    metrics = YOLO(str(weights)).val(data=args.data, split="test", imgsz=args.imgsz,
-                                     batch=args.batch if args.batch > 0 else 8,
+    metrics = YOLO(str(weights)).val(data=args.test_data or args.data, split="test",
+                                     imgsz=args.test_imgsz or args.imgsz,
+                                     batch=min(args.batch, 8) if args.batch > 0 else 8,  # full frames: keep VRAM low
                                      device=args.device, plots=True, project=str(RUNS_DIR),
                                      name=f"test_{Path(weights).stem}")
     print(f"Test split: mAP50 {metrics.box.map50:.3f}  mAP50-95 {metrics.box.map:.3f}  "
@@ -77,6 +81,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--evaluate", default=None, metavar="WEIGHTS",
                    help="Skip training; evaluate these weights on the test split.")
     p.add_argument("--no-test", action="store_true", help="Do not evaluate on the test split after training.")
+    p.add_argument("--test-data", default=None, help="Dataset YAML for the test split (default: --data).")
+    p.add_argument("--test-imgsz", type=int, default=None, help="Test image size (default: --imgsz).")
     args = p.parse_args(argv)
 
     if args.evaluate:
