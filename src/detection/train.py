@@ -33,7 +33,7 @@ def train(args: argparse.Namespace) -> Path:
             data=args.data,
             imgsz=args.imgsz,
             epochs=args.epochs,
-            batch=args.batch,        # -1 = AutoBatch (fits ~60% of GPU memory)
+            batch=args.batch,
             device=args.device,
             workers=args.workers,
             patience=args.patience,  # early stop if val mAP stops improving
@@ -66,7 +66,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--model", default="yolo11n.pt", help="Starting weights (COCO-pretrained).")
     p.add_argument("--imgsz", type=int, default=1280, help="Training image size.")
     p.add_argument("--epochs", type=int, default=50)
-    p.add_argument("--batch", type=int, default=-1, help="Batch size; -1 = AutoBatch.")
+    p.add_argument("--batch", type=int, default=8,
+                   help="Batch size (8 fits imgsz 1280 on an 8 GB GPU); -1 = AutoBatch, which picked 2 here.")
     p.add_argument("--device", default="0", help="'0' for first GPU, 'cpu'.")
     p.add_argument("--workers", type=int, default=4, help="Dataloader workers.")
     p.add_argument("--patience", type=int, default=15, help="Early-stopping patience (epochs).")

@@ -122,7 +122,7 @@ Data: train = chunk 0, val = chunk 9 (the authors' suggestion), test = D02 0628 
 see [`data/README.md`](data/README.md).
 
 ```powershell
-python -m src.detection.train                               # yolo11n, imgsz 1280, 50 epochs, AutoBatch
+python -m src.detection.train                               # yolo11n, imgsz 1280, 50 epochs, batch 8
 python -m src.detection.train --model yolo11s.pt --epochs 100
 python -m src.detection.train --resume                      # continue an interrupted run
 python -m src.detection.train --evaluate models/airbirds_yolo11n_1280.pt   # test split only
