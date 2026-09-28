@@ -10,7 +10,9 @@ ByteTrack links detections across frames by box overlap (IoU). AirBirds birds ar
 ~7 px and move ~6-10 px per frame, so a bird's boxes in consecutive frames barely
 overlap (median IoU ~0.03) and plain ByteTrack never confirms their tracks. The
 tracker therefore sees each box enlarged to at least --assoc-size px around its
-centre; the reported boxes are the detector's originals.
+centre; the reported boxes are the detector's originals. Larger values keep tracks
+together in dense flocks and for fast birds, at the cost of more false tracks
+(40 px: fewer false alarms; 80 px: higher recall; see README).
 
 Most false detections are static specks (sky texture, horizon clutter) that the
 tracker happily follows for hundreds of frames without them moving. A track is
@@ -47,7 +49,7 @@ from src.detection.detect import DEFAULT_WEIGHTS, BirdDetector, Detection, iter_
 # detector threshold is lower than for plain detection (Ultralytics default).
 DEFAULT_TRACK_CONF = 0.1
 # Minimum box side (px) the tracker associates on; see module docstring.
-DEFAULT_ASSOC_SIZE = 40.0
+DEFAULT_ASSOC_SIZE = 60.0
 # A track is reported only after moving this far (px) from its first position; see module docstring.
 DEFAULT_MIN_MOTION = 20.0
 

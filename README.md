@@ -23,7 +23,7 @@ Dashboard & Alerts ◄── Risk Classification ◄── Risk Scoring ◄─�
 | Stage | Module | Status |
 |---|---|---|
 | Frame extraction + detection | `src/detection/detect.py` | ✅ |
-| Fine-tuning on AirBirds (native-resolution tiles) | `src/detection/make_tiles.py`, `train.py`, `configs/airbirds_tiles.yaml` | ✅ test mAP50 0.241 |
+| Fine-tuning on AirBirds (native-resolution tiles) | `src/detection/make_tiles.py`, `train.py`, `configs/airbirds_tiles.yaml` | ✅ test mAP50 0.602 |
 | Tracking (ByteTrack, enlarged-box matching for tiny birds) | `src/tracking/track.py` | ✅ |
 | Runway zones (polygons) | `src/risk_scoring/zones.py`, `zone_editor.py` | ✅ |
 | Feature extraction | `src/risk_scoring/features.py` | ✅ |
@@ -50,7 +50,7 @@ Zones for the two AirBirds cameras used in testing are included:
 cover the paved strip visible behind the runway edge lights and were traced from a
 single frame, so check them against your own view before relying on them.
 
-For the best detector, pick `models/airbirds_tiles_yolo11n_640.pt` with **image size
+For the best detector, pick `models/airbirds_tiles_c0567_yolo11n_640.pt` with **image size
 1920** (see [Training](#training-on-airbirds) for why).
 
 ## Risk scoring
@@ -109,14 +109,14 @@ The same pipeline without the dashboard:
 
 ```powershell
 python -m src.pipeline --source data/videos/<clip>.mp4 --zones configs/zones/cam1.json `
-    --weights models/airbirds_tiles_yolo11n_640.pt --imgsz 1920 --save outputs/pipeline.mp4 --db outputs/alerts.db
+    --weights models/airbirds_tiles_c0567_yolo11n_640.pt --imgsz 1920 --save outputs/pipeline.mp4 --db outputs/alerts.db
 ```
 
 Or step by step, producing CSVs at each stage (used for the ML notebook and analysis):
 
 ```powershell
 python -m src.tracking.track --source data/videos/<clip>.mp4 --csv data/processed/<clip>_tracks.csv `
-    --weights models/airbirds_tiles_yolo11n_640.pt --imgsz 1920
+    --weights models/airbirds_tiles_c0567_yolo11n_640.pt --imgsz 1920
 python -m src.risk_scoring.features --tracks data/processed/<clip>_tracks.csv --zones configs/zones/cam1.json `
     --out data/processed/<clip>_features.csv --start-time 2021-06-28T09:08:56
 python -m src.risk_scoring.risk --features data/processed/<clip>_features.csv --out data/processed/<clip>_risk.csv `
@@ -138,22 +138,23 @@ convolutional, so a bird is the same pixel size in training and at inference, an
 tracking and the pipeline work on whole frames unchanged.
 
 ```powershell
-# Tiled (recommended): cut train + val into 640 px tiles in data/processed/airbirds_tiles (~5.6 GB)
-python -m src.detection.make_tiles
+# Tiled (recommended): cut train + val into 640 px tiles in data/processed/airbirds_tiles (~8.4 GB)
+python -m src.detection.make_tiles --train-every 2
 python -m src.detection.train --data configs/airbirds_tiles.yaml --imgsz 640 --batch 32 --epochs 80 `
-    --patience 25 --name airbirds_tiles_yolo11n_640 --test-data configs/airbirds.yaml --test-imgsz 1920
+    --patience 25 --name airbirds_tiles_c0567_yolo11n_640 --test-data configs/airbirds.yaml --test-imgsz 1920
 
 # Full frames (original baseline)
 python -m src.detection.train                               # yolo11n, imgsz 1280, 50 epochs, batch 8
 
 python -m src.detection.train --resume --name <run>          # continue an interrupted run
-python -m src.detection.train --evaluate models/airbirds_tiles_yolo11n_640.pt `
+python -m src.detection.train --evaluate models/airbirds_tiles_c0567_yolo11n_640.pt `
     --test-data configs/airbirds.yaml --imgsz 1920          # test split only
 ```
 
-`make_tiles` keeps every tile with a bird, 10% of empty tiles (`--empty-keep`) and every
-4th val frame (`--val-every`; consecutive frames are near-duplicates). Train: 10,000
-frames → 20,814 tiles; val: 2,078 frames → 5,507 tiles. Training uses a milder scale
+`make_tiles` keeps every tile with a bird, 10% of empty tiles (`--empty-keep`), every
+2nd train frame (`--train-every`) and every 4th val frame (`--val-every`; consecutive
+frames are near-duplicates). With chunks 0, 5, 6, 7: train 19,204 frames → 33,318 tiles;
+val 2,476 frames → 6,105 tiles. Training uses a milder scale
 augmentation (`scale=0.2`) so birds aren't shrunk to nothing. Runs are saved in
 `runs/detect/`; the best weights are copied to `models/<run name>.pt` and evaluated on
 the full-frame test split. Plug the laptop in and use the Best Performance power
@@ -178,13 +179,17 @@ YOLO11n finds **0** birds at both `imgsz` 640 and 1280 — fine-tuning is essent
 
 Test split = D02 0628, 10,000 full frames, 1,148 birds. RTX 5060 laptop GPU.
 
-| Model (`models/…`) | Training | Test imgsz | Precision | Recall | mAP50 | mAP50-95 |
-|---|---|---|---|---|---|---|
-| `airbirds_yolo11n_1280.pt` | full frames @1280, batch 8; early-stopped at epoch 23 (best 8), 2.0 h | 1280 | 0.235 | 0.323 | 0.142 | 0.030 |
-| `airbirds_tiles_yolo11n_640.pt` | tiles @640, batch 32; early-stopped at epoch 58 (best 33), 2.4 h | 1920 | 0.223 | 0.462 | **0.241** | **0.071** |
-| `airbirds_tiles_yolo11s_640.pt` | tiles @640, batch 16; early-stopped at epoch 57 (best 32), 4.0 h | 1920 | 0.183 | **0.503** | 0.169 | 0.050 |
+| Model (`models/…`) | Training data | Training | Test imgsz | Precision | Recall | mAP50 | mAP50-95 |
+|---|---|---|---|---|---|---|---|
+| `airbirds_yolo11n_1280.pt` | chunk 0 (D01) | full frames @1280, batch 8; stopped at epoch 23 (best 8), 2.0 h | 1280 | 0.235 | 0.323 | 0.142 | 0.030 |
+| `airbirds_tiles_yolo11n_640.pt` | chunk 0 (D01) | tiles @640, batch 32; stopped at epoch 58 (best 33), 2.4 h | 1920 | 0.223 | 0.462 | 0.241 | 0.071 |
+| `airbirds_tiles_yolo11s_640.pt` | chunk 0 (D01) | tiles @640, batch 16; stopped at epoch 57 (best 32), 4.0 h | 1920 | 0.183 | 0.503 | 0.169 | 0.050 |
+| **`airbirds_tiles_c0567_yolo11n_640.pt`** | **chunks 0, 5, 6, 7 (D01 + D02)** | tiles @640, batch 32; stopped at epoch 52 (best 27), 3.1 h | 1920 | **0.464** | **0.687** | **0.602** | **0.197** |
 
-Native-resolution tiles raise test mAP50 by 70% and recall from 32% to 46%. The larger
+**Training on the test camera's view matters most.** Chunk 0 is entirely camera D01,
+while the test sequence is camera D02. Adding chunks 5–7 (24,683 D02 frames from other
+days) raised test mAP50 from 0.241 to 0.602 and doubled precision; this is the default
+model. Native-resolution tiles (vs. full frames at 1280) had raised mAP50 by 70%. The larger
 `yolo11s` matched `yolo11n` on validation (mAP50 ~0.20) but did worse on the test
 camera: slightly higher recall, more false positives. `yolo11n` tiles is the default. The
 full-frame model plateaued at val mAP50 0.10–0.14 from epoch 6; the tiled model kept
@@ -203,19 +208,39 @@ python -m src.evaluate_tracking --images data/raw/airbirds/images/test --labels 
     --prefix D02_20210628090856 --tracks-csv data/processed/eval_test_D02.csv --min-motion 0 10 20
 ```
 
-On the full test sequence (10,000 frames, 1,148 birds in 1,097 frames), 91% of the
-false-alarm boxes came from tracks that never moved (median displacement 0.01 px), while
-real birds move ~3 px per frame. Reporting a track only after it has moved 20 px
-(`--min-motion`, the default) removes most of them:
+The test sequence (10,000 consecutive frames, 1,148 birds in 1,097 frames) is the
+main benchmark. With the D01-only tiled model, 91% of the false-alarm boxes came from
+tracks that never moved (median displacement 0.01 px), while real birds move ~3 px per
+frame. Reporting a track only after it has moved 20 px (`--min-motion`, the default)
+removes most of them. Test sequence, conf 0.1:
 
-| Tiled YOLO11n, conf 0.1 | Precision | Recall | Frames with a false alarm | Bird frames missed |
-|---|---|---|---|---|
-| No motion filter | 0.058 | 0.680 | 50.9% | 30.4% |
-| **Moved ≥ 20 px** | **0.454** | 0.599 | **7.7%** | 37.4% |
+| Detector | Matching box (`--assoc-size`) | Motion filter | Precision | Recall | Frames with a false alarm |
+|---|---|---|---|---|---|
+| D01-only tiles | 40 px | none | 0.058 | 0.680 | 50.9% |
+| D01-only tiles | 40 px | ≥ 20 px | 0.454 | 0.599 | 7.7% |
+| D01 + D02 tiles | 40 px | ≥ 20 px | **0.551** | 0.623 | **5.7%** |
+| **D01 + D02 tiles (default)** | **60 px** | **≥ 20 px** | 0.457 | 0.679 | 8.9% |
+| D01 + D02 tiles | 80 px | ≥ 20 px | 0.414 | **0.740** | 11.0% |
 
-Results are similar for 10–30 px. The cost: a bird that never moves at all (e.g.
-standing on the runway the whole time) is not reported; set `--min-motion 0` to keep
-everything.
+**Flocks.** The test sequence has at most 2 birds at once. In the held-out D02 sequence
+(`D02_20210728064810`) a flock of up to 43 birds crosses the sky; in a tight flock a
+40 px matching box confuses neighbours, IDs switch, and each new ID must travel 20 px
+again before it is reported. On its two longest *continuous* stretches (the sequence
+is otherwise cut into 442 short runs, median 2 frames, so the rest isn't a fair tracking
+test), with the 20 px motion filter:
+
+| Flock stretch | 40 px: precision / recall | 60 px: precision / recall | 80 px: precision / recall |
+|---|---|---|---|
+| 90 frames, ~13 birds/frame | 0.877 / 0.323 | 0.884 / **0.575** | 0.814 / 0.627 |
+| 47 frames, ~18 birds/frame | 0.798 / 0.228 | 0.693 / **0.439** | 0.700 / 0.502 |
+
+The default is 60 px: it nearly doubles recall in flocks — the most dangerous case for
+strikes — for a moderate precision cost on sparse scenes. Use `--assoc-size 40` if
+false alarms matter more than missed birds.
+
+The motion filter's cost: a bird that never moves at all (e.g. standing on the runway
+the whole time) is not reported; set `--min-motion 0` to keep everything. Results are
+similar for 10–30 px.
 
 ## Optional ML risk classifier (Google Colab)
 
@@ -242,7 +267,7 @@ The exported model runs with NumPy only.
 ByteTrack links boxes across frames by overlap, but AirBirds birds are ~7 px and move
 6–10 px per frame (median IoU between frames ~0.03), so plain ByteTrack almost never
 confirms a track. The tracker matches on boxes enlarged to at least `--assoc-size`
-(40 px) around each centre and reports the original boxes: on 300 val frames (554
+(default 60 px) around each centre and reports the original boxes. With 40 px, on 300 val frames (554
 ground-truth birds) tracked detections went from 24 to 457. Tracks are reported once
 they have moved `--min-motion` px (default 20) — see
 [Tracking against ground truth](#tracking-against-ground-truth).
@@ -329,7 +354,7 @@ See [`data/README.md`](data/README.md).
 ## Roadmap
 
 1. ✅ Detection on video (COCO-pretrained YOLO11n)
-2. ✅ Fine-tune on AirBirds — native-resolution tiles: test mAP50 0.241 (full-frame baseline 0.142)
+2. ✅ Fine-tune on AirBirds — native-resolution tiles, D01 + D02 cameras: test mAP50 0.602 (full-frame D01-only baseline 0.142)
 3. ✅ Tracking with ByteTrack (enlarged-box matching for tiny, fast birds)
 4. ✅ Features: speed, heading, count, flock size, distance to runway polygon, time of day
 5. ✅ Weighted risk score, Low/Medium/High, explainable alerts
