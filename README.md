@@ -188,9 +188,34 @@ Native-resolution tiles raise test mAP50 by 70% and recall from 32% to 46%. The 
 `yolo11s` matched `yolo11n` on validation (mAP50 ~0.20) but did worse on the test
 camera: slightly higher recall, more false positives. `yolo11n` tiles is the default. The
 full-frame model plateaued at val mAP50 0.10–0.14 from epoch 6; the tiled model kept
-improving until epoch 33. Precision is still low (~0.22): the detector fires on some
-specks of sky and horizon clutter, which shows up as false alerts in the pipeline.
-The end-to-end pipeline runs at ~26 FPS on full 1920×1080 video with the tiled model.
+improving until epoch 33. Detector precision is low (~0.22): it fires on specks of sky
+and horizon clutter. Most of these don't move, which the tracker uses to drop them —
+see the next section. The end-to-end pipeline runs at ~26 FPS on full 1920×1080 video
+with the tiled model (laptop on AC power, Best Performance mode).
+
+### Tracking against ground truth
+
+[`src/evaluate_tracking.py`](src/evaluate_tracking.py) runs the tracker over a labelled
+sequence and matches tracked birds to ground-truth birds (centre within 15 px):
+
+```powershell
+python -m src.evaluate_tracking --images data/raw/airbirds/images/test --labels data/raw/airbirds/labels/test `
+    --prefix D02_20210628090856 --tracks-csv data/processed/eval_test_D02.csv --min-motion 0 10 20
+```
+
+On the full test sequence (10,000 frames, 1,148 birds in 1,097 frames), 91% of the
+false-alarm boxes came from tracks that never moved (median displacement 0.01 px), while
+real birds move ~3 px per frame. Reporting a track only after it has moved 20 px
+(`--min-motion`, the default) removes most of them:
+
+| Tiled YOLO11n, conf 0.1 | Precision | Recall | Frames with a false alarm | Bird frames missed |
+|---|---|---|---|---|
+| No motion filter | 0.058 | 0.680 | 50.9% | 30.4% |
+| **Moved ≥ 20 px** | **0.454** | 0.599 | **7.7%** | 37.4% |
+
+Results are similar for 10–30 px. The cost: a bird that never moves at all (e.g.
+standing on the runway the whole time) is not reported; set `--min-motion 0` to keep
+everything.
 
 ## Optional ML risk classifier (Google Colab)
 
@@ -218,7 +243,9 @@ ByteTrack links boxes across frames by overlap, but AirBirds birds are ~7 px and
 6–10 px per frame (median IoU between frames ~0.03), so plain ByteTrack almost never
 confirms a track. The tracker matches on boxes enlarged to at least `--assoc-size`
 (40 px) around each centre and reports the original boxes: on 300 val frames (554
-ground-truth birds) tracked detections went from 24 to 457.
+ground-truth birds) tracked detections went from 24 to 457. Tracks are reported once
+they have moved `--min-motion` px (default 20) — see
+[Tracking against ground truth](#tracking-against-ground-truth).
 CSV columns: `frame_idx, time_s, track_id, class_id, class_name, confidence, x1, y1, x2,
 y2, cx, cy, frame_w, frame_h`. Default `--conf` is 0.1 because ByteTrack uses
 low-score detections to keep tracks alive.
@@ -307,5 +334,5 @@ See [`data/README.md`](data/README.md).
 4. ✅ Features: speed, heading, count, flock size, distance to runway polygon, time of day
 5. ✅ Weighted risk score, Low/Medium/High, explainable alerts
 6. ✅ Streamlit dashboard with live video, risk level, charts and SQLite alert log
-7. ⏳ Evaluation: detection mAP on the test split ✅; tracking consistency and
-   risk-level agreement with labelled clips (Colab notebook) still to do
+7. ⏳ Evaluation: detection mAP on the test split ✅; tracking precision/recall against
+   ground truth ✅; risk-level agreement with labelled clips (Colab notebook) still to do
