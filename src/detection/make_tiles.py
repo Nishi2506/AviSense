@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import random
+import shutil
 import zlib
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
@@ -91,16 +92,17 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--empty-keep", type=float, default=0.1, help="Fraction of bird-free tiles to keep.")
     p.add_argument("--min-visible", type=float, default=0.5, help="Keep a cut box if this much of it is inside.")
     p.add_argument("--val-every", type=int, default=4, help="Use every Nth val frame.")
+    p.add_argument("--train-every", type=int, default=1, help="Use every Nth train frame.")
     p.add_argument("--splits", nargs="+", default=["train", "val"])
     p.add_argument("--workers", type=int, default=8)
     args = p.parse_args(argv)
 
     for split in args.splits:
-        for kind in ("images", "labels"):
-            (DST / kind / split).mkdir(parents=True, exist_ok=True)
+        for kind in ("images", "labels"):  # start clean so tiles from earlier settings don't linger
+            shutil.rmtree(DST / kind / split, ignore_errors=True)
+            (DST / kind / split).mkdir(parents=True)
         frames = sorted((SRC / "images" / split).glob("*.png"))
-        if split == "val":
-            frames = frames[::args.val_every]
+        frames = frames[::args.val_every if split == "val" else args.train_every]
         with ProcessPoolExecutor(args.workers) as ex:
             results = list(ex.map(process_frame, frames, [split] * len(frames), [args.tile] * len(frames),
                                   [args.empty_keep] * len(frames), [args.min_visible] * len(frames),

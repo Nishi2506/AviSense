@@ -28,7 +28,8 @@ from src.detection.detect import DEFAULT_WEIGHTS, BirdDetector, iter_frames, sou
 from src.risk_scoring.features import aggregate_frame, hour_of_day, track_features
 from src.risk_scoring.risk import DEFAULT_CONFIG, FACTORS, LEVELS, RiskConfig, classify, score
 from src.risk_scoring.zones import Zone, draw_zones, load_zones
-from src.tracking.track import DEFAULT_TRACK_CONF, BirdTracker, TrackedDetection, TrackHistory, draw_tracks
+from src.tracking.track import (DEFAULT_MIN_MOTION, DEFAULT_TRACK_CONF, BirdTracker, TrackedDetection, TrackHistory,
+                                draw_tracks)
 
 # Status palette (good / warning / critical), BGR; banner text color chosen for contrast.
 LEVEL_COLORS = {"Low": (12, 163, 12), "Medium": (25, 178, 250), "High": (59, 59, 208)}
@@ -195,9 +196,10 @@ class Pipeline:
                  conf: float = DEFAULT_TRACK_CONF, imgsz: int = 640, device: str | None = None,
                  tracker_cfg: str = "bytetrack.yaml", alert_log: AlertLog | None = None,
                  start_time: datetime | None = None, meta: dict | None = None,
-                 birds_only: bool = True, min_track_age: int = 0) -> None:
+                 birds_only: bool = True, min_track_age: int = 0, min_motion: float = DEFAULT_MIN_MOTION) -> None:
         self.zones = zones
-        self.tracker = BirdTracker(BirdDetector(weights, conf, imgsz, device, birds_only), tracker_cfg)
+        self.tracker = BirdTracker(BirdDetector(weights, conf, imgsz, device, birds_only), tracker_cfg,
+                                   min_motion=min_motion)
         self.history = TrackHistory()
         self.engine = OnlineRiskEngine(zones, cfg, start_time=start_time, min_track_age=min_track_age)
         self.alerts = AlertTracker(cfg, alert_log, meta, start_time)
@@ -241,6 +243,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--conf", type=float, default=DEFAULT_TRACK_CONF, help="Detector confidence threshold.")
     p.add_argument("--imgsz", type=int, default=640, help="Inference image size.")
     p.add_argument("--device", default=None, help="'0' for first GPU, 'cpu', or omit for auto.")
+    p.add_argument("--min-motion", type=float, default=DEFAULT_MIN_MOTION,
+                   help="Ignore tracks until they have moved this many px (removes static false detections).")
     p.add_argument("--start-time", default=None,
                    help="Wall-clock time of frame 0 (ISO). Default: parsed from filename if present.")
     p.add_argument("--db", default=None, help="SQLite file to log alerts to (e.g. outputs/alerts.db).")
@@ -254,7 +258,7 @@ def main(argv: list[str] | None = None) -> None:
     log = AlertLog(args.db) if args.db else None
     pipe = Pipeline(zones, RiskConfig.load(args.config), args.weights, args.conf, args.imgsz, args.device,
                     alert_log=log, start_time=start, meta={"source": str(args.source), "camera": camera},
-                    birds_only=not args.all_classes)
+                    birds_only=not args.all_classes, min_motion=args.min_motion)
 
     writer = None
     counts = dict.fromkeys(LEVELS, 0)

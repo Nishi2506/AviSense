@@ -12,6 +12,12 @@ overlap (median IoU ~0.03) and plain ByteTrack never confirms their tracks. The
 tracker therefore sees each box enlarged to at least --assoc-size px around its
 centre; the reported boxes are the detector's originals.
 
+Most false detections are static specks (sky texture, horizon clutter) that the
+tracker happily follows for hundreds of frames without them moving. A track is
+therefore only reported once it has moved --min-motion px from where it was first
+seen (it stays reported afterwards, e.g. if the bird lands). This also hides a bird
+that never moves at all, such as one standing still the whole time.
+
 Usage (from the project root):
     python -m src.tracking.track --source data/videos/sample.mp4 --show
     python -m src.tracking.track --source data/videos/sample.mp4 \
@@ -42,6 +48,8 @@ from src.detection.detect import DEFAULT_WEIGHTS, BirdDetector, Detection, iter_
 DEFAULT_TRACK_CONF = 0.1
 # Minimum box side (px) the tracker associates on; see module docstring.
 DEFAULT_ASSOC_SIZE = 40.0
+# A track is reported only after moving this far (px) from its first position; see module docstring.
+DEFAULT_MIN_MOTION = 20.0
 
 
 @dataclass
@@ -83,9 +91,11 @@ class BirdTracker:
     """Runs a BirdDetector's YOLO model and links detections with ByteTrack for persistent IDs."""
 
     def __init__(self, detector: BirdDetector, tracker_cfg: str = "bytetrack.yaml",
-                 assoc_size: float = DEFAULT_ASSOC_SIZE) -> None:
+                 assoc_size: float = DEFAULT_ASSOC_SIZE, min_motion: float = DEFAULT_MIN_MOTION) -> None:
         self.detector = detector
-        self.assoc_size = assoc_size
+        self.assoc_size, self.min_motion = assoc_size, min_motion
+        self._origin: dict[int, tuple[float, float]] = {}  # first centre of each track not yet moving
+        self._moving: set[int] = set()
         cfg = IterableSimpleNamespace(**YAML.load(check_yaml(tracker_cfg)))
         if cfg.tracker_type != "bytetrack":
             raise ValueError(f"Only bytetrack configs are supported, got {cfg.tracker_type!r}")
@@ -103,12 +113,24 @@ class BirdTracker:
         tracks = []
         for tid, det_idx in zip(out[:, 4].astype(int), out[:, -1].astype(int)):  # confirmed tracks only
             x1, y1, x2, y2, conf, cls = data[det_idx]
+            if not self._has_moved(int(tid), (x1 + x2) / 2, (y1 + y2) / 2):
+                continue
             tracks.append(
                 TrackedDetection(frame_idx, float(x1), float(y1), float(x2), float(y2),
                                  float(conf), int(cls), d.names[int(cls)],
                                  track_id=int(tid), time_s=time_s)
             )
         return tracks
+
+    def _has_moved(self, tid: int, cx: float, cy: float) -> bool:
+        if tid in self._moving:
+            return True
+        x0, y0 = self._origin.setdefault(tid, (cx, cy))
+        if np.hypot(cx - x0, cy - y0) < self.min_motion:
+            return False
+        self._moving.add(tid)
+        del self._origin[tid]
+        return True
 
 
 def _color_for(track_id: int) -> tuple[int, int, int]:
@@ -136,7 +158,7 @@ CSV_FIELDS = ["frame_idx", "time_s", "track_id", "class_id", "class_name", "conf
 def run(args: argparse.Namespace) -> None:
     detector = BirdDetector(args.weights, args.conf, args.imgsz, args.device,
                             birds_only=not args.all_classes)
-    tracker = BirdTracker(detector, args.tracker, args.assoc_size)
+    tracker = BirdTracker(detector, args.tracker, args.assoc_size, args.min_motion)
     history = TrackHistory(maxlen=args.trail)
     fps_src = source_fps(args.source)
 
@@ -204,6 +226,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--tracker", default="bytetrack.yaml", help="ByteTrack config YAML.")
     p.add_argument("--assoc-size", type=float, default=DEFAULT_ASSOC_SIZE,
                    help="Minimum box side (px) used for frame-to-frame matching of tiny birds.")
+    p.add_argument("--min-motion", type=float, default=DEFAULT_MIN_MOTION,
+                   help="Report a track only after it has moved this many px (0 = report all).")
     p.add_argument("--trail", type=int, default=30, help="Trail length in frames.")
     p.add_argument("--all-classes", action="store_true", help="Do not filter to bird class.")
     p.add_argument("--show", action="store_true", help="Show a live preview window.")

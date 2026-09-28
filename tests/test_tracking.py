@@ -71,3 +71,28 @@ def test_tracker_links_tiny_fast_bird(monkeypatch):
     for i in range(10):
         ids.update(t.track_id for t in tracker.track(frame, i))
     assert len(ids) == 1
+
+
+def test_static_detection_is_not_reported_until_it_moves():
+    import torch
+    from src.tracking.track import BirdTracker
+
+    xs = [500] * 8 + [505, 512, 520]  # sits still for 8 frames, then flies off
+
+    class FakeModel:
+        i = -1
+        def predict(self, frame, **kw):
+            FakeModel.i += 1
+            x = xs[FakeModel.i]
+            r = type("R", (), {})()
+            r.boxes = Boxes(torch.tensor([[x, 300, x + 6, 306, 0.9, 0]], dtype=torch.float32), (1080, 1920))
+            r.orig_shape = (1080, 1920)
+            return [r]
+
+    class FakeDetector:
+        model, conf, imgsz, device, classes, names = FakeModel(), 0.1, 640, None, None, {0: "bird"}
+
+    tracker = BirdTracker(FakeDetector(), min_motion=10)
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    reported = [len(tracker.track(frame, i)) for i in range(len(xs))]
+    assert reported == [0] * 9 + [1, 1]  # first reported once 12 px from where it started

@@ -82,6 +82,9 @@ with st.sidebar.expander("Detection settings"):
     conf = st.slider("Confidence threshold", 0.05, 0.9, 0.1, 0.05)
     all_classes = st.checkbox("Detect all classes (testing only)")
     min_age = st.number_input("Ignore tracks younger than (frames)", 0, 30, 3)
+    min_motion = st.number_input("Ignore birds until they move (px)", 0, 100, 20,
+                                 help="Most false detections are static specks. 0 keeps everything, "
+                                      "including birds that never move.")
 
 base_cfg = RiskConfig.load(ROOT / DEFAULT_CONFIG)
 with st.sidebar.expander("Risk weights & thresholds"):
@@ -220,7 +223,7 @@ if st.session_state.get("running") and source and zone_choice:
         pipe = Pipeline(zones, cfg, str(ROOT / weights) if weights != "yolo11n.pt" else weights,
                         conf=conf, imgsz=imgsz, alert_log=log, start_time=start_time,
                         meta={"source": source, "camera": camera}, birds_only=not all_classes,
-                        min_track_age=int(min_age))
+                        min_track_age=int(min_age), min_motion=float(min_motion))
 
     history: list[dict] = []
     last_alert_id = None
