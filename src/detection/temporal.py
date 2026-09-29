@@ -50,13 +50,19 @@ class TemporalBuffer:
         return compose(pick(2 * self.step), pick(self.step), f[-1])
 
 
+def split_name(stem: str) -> tuple[str, str]:
+    """('<prefix>_', '<number>') for AirBirds names '<prefix>_<n>'; prefix is '' for bare numbers."""
+    prefix, _, num = stem.rpartition("_")
+    return (prefix + "_" if prefix else ""), num
+
+
 def sequence_neighbours(path: Path, step: int) -> tuple[Path, Path] | None:
     """Paths of frames n-2k and n-k of an AirBirds frame '<prefix>_<n:07d>.png', if both exist."""
-    prefix, num = path.stem.rsplit("_", 1)
+    prefix, num = split_name(path.stem)
     n = int(num)
     if n < 2 * step:
         return None
-    older = [path.with_name(f"{prefix}_{n - b:0{len(num)}d}{path.suffix}") for b in (2 * step, step)]
+    older = [path.with_name(f"{prefix}{n - b:0{len(num)}d}{path.suffix}") for b in (2 * step, step)]
     return (older[0], older[1]) if all(p.exists() for p in older) else None
 
 
@@ -76,10 +82,11 @@ def write_sequence(images: Path, labels: Path, out: Path, split: str, step: int)
     """
     (out / "images" / split).mkdir(parents=True, exist_ok=True)
     (out / "labels" / split).mkdir(parents=True, exist_ok=True)
-    frames = sorted(images.glob("*.png"), key=lambda p: (p.stem.rsplit("_", 1)[0], int(p.stem.rsplit("_", 1)[1])))
+    key = lambda p: (split_name(p.stem)[0], int(split_name(p.stem)[1]))
+    frames = sorted(images.glob("*.png"), key=key)
     buf, prev = None, (None, None)
     for i, p in enumerate(frames):
-        prefix, n = p.stem.rsplit("_", 1)[0], int(p.stem.rsplit("_", 1)[1])
+        prefix, n = key(p)
         if (prefix, n - 1) != prev:
             buf = TemporalBuffer(step)
         prev = (prefix, n)

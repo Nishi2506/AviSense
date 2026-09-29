@@ -45,3 +45,9 @@ def test_write_sequence_resets_buffer_at_gaps(tmp_path):
     assert read(2) == [0, 10, 20]
     assert read(7) == [70, 70, 70]  # fresh start after the gap
     assert (tmp_path / "out/labels/test/D02_x_0000007.txt").read_text() == ""
+
+
+def test_neighbours_for_names_without_prefix(tmp_path):
+    for n in (1, 2, 3):
+        cv2.imwrite(str(tmp_path / f"{n:07d}.png"), np.zeros((4, 6), np.uint8))
+    assert sequence_neighbours(tmp_path / "0000003.png", 1) == (tmp_path / "0000001.png", tmp_path / "0000002.png")
