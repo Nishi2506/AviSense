@@ -1,0 +1,9 @@
+# Motion-stacked 640x640 tiles (python -m src.detection.make_tiles --temporal 2 --train-every 2).
+# Each tile's B, G, R channels are greyscale frames t-4, t-2, t; see src/detection/temporal.py.
+
+path: data/processed/airbirds_tiles_temporal2
+train: images/train
+val: images/val
+
+names:
+  0: bird

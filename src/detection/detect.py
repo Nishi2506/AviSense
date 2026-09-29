@@ -22,6 +22,8 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 
+from src.detection.temporal import TemporalBuffer, temporal_step
+
 DEFAULT_WEIGHTS = "yolo11n.pt"  # COCO-pretrained; auto-downloaded on first use
 BIRD_CLASS_NAMES = {"bird"}
 
@@ -49,7 +51,11 @@ class Detection:
 
 
 class BirdDetector:
-    """Wraps a YOLO model and returns bird detections for a single frame."""
+    """Wraps a YOLO model and returns bird detections for a single frame.
+
+    For motion models ('temporal<k>' in the weights name, see src.detection.temporal)
+    frames must be passed in order: prepare() stacks each one with two earlier frames.
+    """
 
     def __init__(
         self,
@@ -64,6 +70,8 @@ class BirdDetector:
         self.imgsz = imgsz
         self.device = device  # None lets Ultralytics pick GPU if available
         self.names: dict[int, str] = self.model.names
+        step = temporal_step(weights)
+        self._buffer = TemporalBuffer(step) if step else None
 
         # Resolve bird class ids by name so this works for both COCO weights
         # (bird = 14) and AirBirds fine-tuned weights (likely bird = 0).
@@ -77,9 +85,13 @@ class BirdDetector:
         else:
             self.classes = None
 
+    def prepare(self, frame: np.ndarray) -> np.ndarray:
+        """The model's input for this frame (call once per frame, in order)."""
+        return self._buffer.push(frame) if self._buffer else frame
+
     def detect(self, frame: np.ndarray, frame_idx: int = 0) -> list[Detection]:
         result = self.model.predict(
-            frame,
+            self.prepare(frame),
             conf=self.conf,
             imgsz=self.imgsz,
             device=self.device,

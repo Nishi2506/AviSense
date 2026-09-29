@@ -64,6 +64,7 @@ def test_tracker_links_tiny_fast_bird(monkeypatch):
 
     class FakeDetector:
         model, conf, imgsz, device, classes, names = FakeModel(), 0.1, 640, None, None, {0: "bird"}
+        prepare = staticmethod(lambda f: f)
 
     tracker = BirdTracker(FakeDetector())
     frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
@@ -91,6 +92,7 @@ def test_static_detection_is_not_reported_until_it_moves():
 
     class FakeDetector:
         model, conf, imgsz, device, classes, names = FakeModel(), 0.1, 640, None, None, {0: "bird"}
+        prepare = staticmethod(lambda f: f)
 
     tracker = BirdTracker(FakeDetector(), min_motion=10)
     frame = np.zeros((1080, 1920, 3), dtype=np.uint8)

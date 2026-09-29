@@ -105,7 +105,7 @@ class BirdTracker:
 
     def track(self, frame: np.ndarray, frame_idx: int = 0, time_s: float = 0.0) -> list[TrackedDetection]:
         d = self.detector
-        result = d.model.predict(frame, conf=d.conf, imgsz=d.imgsz, device=d.device,
+        result = d.model.predict(d.prepare(frame), conf=d.conf, imgsz=d.imgsz, device=d.device,
                                  classes=d.classes, verbose=False)[0]
         data = result.boxes.data.cpu().numpy()
         out = self.tracker.update(Boxes(enlarge_boxes(data, self.assoc_size), result.orig_shape), frame)

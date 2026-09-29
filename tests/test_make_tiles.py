@@ -22,3 +22,22 @@ def test_cut_boxes_kept_only_if_mostly_visible():
     mostly_out = (0, 638.0, 0.0, 650.0, 10.0)  # 2 of 12 px inside
     outside = (0, 700.0, 0.0, 710.0, 10.0)
     assert len(tile_labels([mostly_in, mostly_out, outside], 0, 0, 640, 0.5)) == 1
+
+
+def test_hard_negative_tiles_are_kept(tmp_path, monkeypatch):
+    import cv2
+    import numpy as np
+    from src.detection import make_tiles as mt
+
+    monkeypatch.setattr(mt, "SRC", tmp_path / "src")
+    for d in ("src/images/train", "src/labels/train", "dst/images/train", "dst/labels/train"):
+        (tmp_path / d).mkdir(parents=True)
+    img = tmp_path / "src/images/train/f_0000001.png"
+    cv2.imwrite(str(img), np.zeros((1080, 1920, 3), np.uint8))
+    (tmp_path / "src/labels/train/f_0000001.txt").write_text("")  # no birds
+
+    dst = tmp_path / "dst"
+    assert mt.process_frame(img, "train", 640, 0.0, 0.5, dst=dst)[0] == 0  # no empties kept
+    n_tiles, n_boxes, n_hard = mt.process_frame(img, "train", 640, 0.0, 0.5, hard=[(700.0, 100.0)], dst=dst)
+    assert (n_tiles, n_boxes, n_hard) == (1, 0, 1)
+    assert (tmp_path / "dst/images/train/f_0000001_x640_y0.png").exists()

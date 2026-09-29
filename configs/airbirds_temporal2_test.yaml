@@ -1,0 +1,11 @@
+# AirBirds test split as motion-stacked frames (k = 2), for testing temporal models:
+#   python -m src.detection.temporal --step 2      # writes data/processed/airbirds_temporal2_test
+#   python -m src.detection.train ... --test-data configs/airbirds_temporal2_test.yaml --test-imgsz 1920
+
+path: data/processed/airbirds_temporal2_test
+train: images/test  # unused; Ultralytics requires the key
+val: images/test
+test: images/test
+
+names:
+  0: bird

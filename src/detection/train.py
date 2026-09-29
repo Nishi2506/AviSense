@@ -44,6 +44,7 @@ def train(args: argparse.Namespace) -> Path:
             project=str(RUNS_DIR),
             name=name,
             fraction=args.fraction,
+            pretrained=args.pretrained or True,  # a .pt path loads its weights into a .yaml-built model
             plots=True,
         )
     best = Path(model.trainer.save_dir) / "weights" / "best.pt"
@@ -75,6 +76,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--device", default="0", help="'0' for first GPU, 'cpu'.")
     p.add_argument("--workers", type=int, default=4, help="Dataloader workers.")
     p.add_argument("--patience", type=int, default=15, help="Early-stopping patience (epochs).")
+    p.add_argument("--pretrained", default=None,
+                   help="Weights to load into a model built from a .yaml (e.g. yolo11n.pt for yolo11n-p2.yaml).")
     p.add_argument("--fraction", type=float, default=1.0, help="Fraction of train set to use (quick tests).")
     p.add_argument("--name", default=None, help="Run name (default: airbirds_<model>_<imgsz>).")
     p.add_argument("--resume", action="store_true", help="Resume the named run from its last.pt.")
