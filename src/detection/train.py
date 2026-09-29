@@ -21,6 +21,8 @@ from pathlib import Path
 
 from ultralytics import YOLO
 
+from src.detection.temporal import temporal_step
+
 # Absolute, because Ultralytics nests relative project paths under its own runs dir.
 RUNS_DIR = Path("runs/detect").resolve()
 
@@ -32,7 +34,11 @@ def train(args: argparse.Namespace) -> Path:
         model.train(resume=True)
     else:
         model = YOLO(args.model)
+        # Motion-stacked data: channels are frames, not colours, so hue/saturation
+        # augmentation would scramble them (brightness scaling is still fine).
+        colour_aug = {"hsv_h": 0.0, "hsv_s": 0.0} if temporal_step(args.data) else {}
         model.train(
+            **colour_aug,
             data=args.data,
             imgsz=args.imgsz,
             epochs=args.epochs,

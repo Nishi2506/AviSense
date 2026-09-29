@@ -79,21 +79,33 @@ def tile_labels(boxes, x0: int, y0: int, tile: int, min_visible: float) -> list[
 
 
 def false_positive_centres(frames: list[Path], split: str, weights: str, imgsz: int, conf: float,
-                           max_dist: float = 10.0) -> dict[str, list[tuple[float, float]]]:
-    """Per frame stem: centres of detections with no ground-truth bird within max_dist px."""
+                           max_dist: float = 10.0, temporal: int = 0) -> dict[str, list[tuple[float, float]]]:
+    """Per frame stem: centres of detections with no ground-truth bird within max_dist px.
+
+    With temporal > 0 the model sees motion-stacked frames (frames without earlier
+    neighbours are skipped, as in the tiles).
+    """
     from ultralytics import YOLO  # only needed here
 
     model = YOLO(weights)
     out: dict[str, list[tuple[float, float]]] = {}
     for i in range(0, len(frames), 16):
-        for r in model.predict([str(f) for f in frames[i:i + 16]], imgsz=imgsz, conf=conf, verbose=False):
+        batch = frames[i:i + 16]
+        if temporal:
+            pairs = [(f, load_composed(f, temporal)) for f in batch]
+            batch, inputs = [f for f, im in pairs if im is not None], [im for _, im in pairs if im is not None]
+        else:
+            inputs = [str(f) for f in batch]
+        if not inputs:
+            continue
+        for f, r in zip(batch, model.predict(inputs, imgsz=imgsz, conf=conf, verbose=False)):
             h, w = r.orig_shape
             gt = np.array([((x1 + x2) / 2, (y1 + y2) / 2) for _, x1, y1, x2, y2 in
-                           read_labels(SRC / "labels" / split / f"{Path(r.path).stem}.txt", w, h)]).reshape(-1, 2)
+                           read_labels(SRC / "labels" / split / f"{f.stem}.txt", w, h)]).reshape(-1, 2)
             det = r.boxes.xywh.cpu().numpy()[:, :2]
             far = [tuple(c) for c in det if len(gt) == 0 or np.min(np.hypot(*(gt - c).T)) > max_dist]
             if far:
-                out[Path(r.path).stem] = far
+                out[f.stem] = far
         if (i // 16) % 125 == 0:
             print(f"  hard negatives: {min(i + 16, len(frames))}/{len(frames)} frames")
     return out
@@ -143,8 +155,6 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--out", default=None, help="Output folder (default: data/processed/airbirds_tiles[_temporalK]).")
     args = p.parse_args(argv)
     dst = Path(args.out) if args.out else DST.with_name(DST.name + (f"_temporal{args.temporal}" if args.temporal else ""))
-    if args.temporal and args.hard_negatives:
-        p.error("--hard-negatives needs an RGB model; not supported with --temporal")
 
     for split in args.splits:
         for kind in ("images", "labels"):  # start clean so tiles from earlier settings don't linger
@@ -154,7 +164,8 @@ def main(argv: list[str] | None = None) -> None:
         frames = frames[::args.val_every if split == "val" else args.train_every]
         hard = {}
         if args.hard_negatives and split == "train":  # val stays a plain random sample
-            hard = false_positive_centres(frames, split, args.hard_negatives, args.hn_imgsz, args.hn_conf)
+            hard = false_positive_centres(frames, split, args.hard_negatives, args.hn_imgsz, args.hn_conf,
+                                          temporal=args.temporal)
         with ProcessPoolExecutor(args.workers) as ex:
             results = list(ex.map(process_frame, frames, [split] * len(frames), [args.tile] * len(frames),
                                   [args.empty_keep] * len(frames), [args.min_visible] * len(frames),
