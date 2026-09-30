@@ -33,9 +33,9 @@ from src.tracking.track import DEFAULT_ASSOC_SIZE, DEFAULT_TRACK_CONF, BirdTrack
 
 
 def collect_tracks(frames: list[tuple[int, Path]], weights: str, imgsz: int, conf: float,
-                   assoc_size: float, device: str | None = None) -> pd.DataFrame:
+                   assoc_size: float, device: str | None = None, tracker_cfg: str = "bytetrack.yaml") -> pd.DataFrame:
     # min_motion=0: keep every track; the motion filter is applied afterwards in score()
-    tracker = BirdTracker(BirdDetector(weights, conf, imgsz, device), assoc_size=assoc_size, min_motion=0)
+    tracker = BirdTracker(BirdDetector(weights, conf, imgsz, device), tracker_cfg, assoc_size=assoc_size, min_motion=0)
     rows = []
     for i, (n, path) in enumerate(frames):
         for t in tracker.track(cv2.imread(str(path)), n):
@@ -111,6 +111,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--imgsz", type=int, default=1920)
     p.add_argument("--conf", type=float, default=DEFAULT_TRACK_CONF, help="Detector confidence while tracking.")
     p.add_argument("--assoc-size", type=float, default=DEFAULT_ASSOC_SIZE)
+    p.add_argument("--tracker", default="bytetrack.yaml", help="ByteTrack config YAML.")
     p.add_argument("--device", default=None)
     p.add_argument("--tracks-csv", default=None, help="Cache of tracker output (read if it exists, else written).")
     p.add_argument("--max-dist", type=float, default=15.0, help="Match radius in pixels.")
@@ -130,7 +131,7 @@ def main(argv: list[str] | None = None) -> None:
         print(f"Loaded {len(tracks)} tracked boxes from {args.tracks_csv}")
     else:
         print(f"Tracking {len(frames)} frames ...")
-        tracks = collect_tracks(frames, args.weights, args.imgsz, args.conf, args.assoc_size, args.device)
+        tracks = collect_tracks(frames, args.weights, args.imgsz, args.conf, args.assoc_size, args.device, args.tracker)
         if args.tracks_csv:
             Path(args.tracks_csv).parent.mkdir(parents=True, exist_ok=True)
             tracks.to_csv(args.tracks_csv, index=False)

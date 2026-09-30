@@ -1,0 +1,11 @@
+# ByteTrack settings for tiny birds and AirBirds-trained detectors, whose confidence on
+# real birds is lower than COCO models' (motion model: 94% of birds >= 0.25, 98% >= 0.1).
+# Ultralytics defaults: track_high_thresh 0.25, track_low_thresh 0.1, new_track_thresh 0.25.
+# Static false detections are removed afterwards by the tracker's motion filter.
+tracker_type: bytetrack
+track_high_thresh: 0.1   # first-stage matching
+track_low_thresh: 0.05   # second-stage matching of low-score detections
+new_track_thresh: 0.1    # start a new track
+track_buffer: 30         # frames a lost track is kept
+match_thresh: 0.8
+fuse_score: True

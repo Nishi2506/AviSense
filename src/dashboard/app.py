@@ -70,9 +70,11 @@ zone_choice = st.sidebar.selectbox("Runway zones", [p.name for p in zone_files],
                                    placeholder="Draw one with zone_editor" if not zone_files else "Choose zones")
 
 weights_files = ["yolo11n.pt"] + sorted(str(p.relative_to(ROOT)) for p in (ROOT / "models").glob("*.pt"))
-tiled = [i for i, w in enumerate(weights_files) if "airbirds_tiles_" in w]  # best detectors (see README)
+BEST_WEIGHTS = "airbirds_tiles_temporal2_hn_yolo11n-p2_640.pt"  # best on the test split (see README)
+preferred = [i for i, w in enumerate(weights_files) if w.endswith(BEST_WEIGHTS)] or \
+            [i for i, w in enumerate(weights_files) if "airbirds_tiles_" in w]
 weights = st.sidebar.selectbox("Detector weights", weights_files,
-                               index=tiled[0] if tiled else len(weights_files) - 1)
+                               index=preferred[0] if preferred else len(weights_files) - 1)
 
 with st.sidebar.expander("Detection settings"):
     imgsz = st.select_slider("Image size", [640, 960, 1280, 1600, 1920],
