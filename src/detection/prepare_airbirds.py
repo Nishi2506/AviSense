@@ -78,8 +78,11 @@ def download(name: str, dest: Path, parts: int = 8, min_split: int = 50_000_000)
             if have > e - s + 1:
                 part.unlink()
                 have = 0
+            # No curl --retry here: when writing to stdout, curl's own retry re-sends the whole
+            # range and appends it again (duplicate bytes). This loop resumes instead.
             with open(part, "ab") as f:
-                subprocess.run([*CURL, "-r", f"{s + have}-{e}", url], stdout=f, check=False)
+                subprocess.run(["curl", "-sSL", "--connect-timeout", "30", "--speed-limit", "50000",
+                                "--speed-time", "60", "-r", f"{s + have}-{e}", url], stdout=f, check=False)
         raise RuntimeError(f"failed to download bytes {s}-{e} of {name}")
 
     from concurrent.futures import ThreadPoolExecutor
