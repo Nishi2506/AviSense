@@ -35,6 +35,12 @@ Move-Item data/raw/airbirds/images/train/D02_20210728064810_* data/raw/airbirds/
 Move-Item data/raw/airbirds/labels/train/D02_20210728064810_* data/raw/airbirds/labels/val/
 ```
 
+**On the development laptop the images are no longer kept** (only the small label zips
+and extracted labels): training and testing run on Google Colab
+([`notebooks/train_detector_colab.ipynb`](../notebooks/train_detector_colab.ipynb)), which
+downloads the zips itself. To evaluate locally again, download and extract the test
+sequence (`images_test_D02_20210628090856.zip`, 17 GB) into `raw/airbirds/images/test`.
+
 Layout (Ultralytics maps `/images/` → `/labels/` to find each label file):
 
 ```
