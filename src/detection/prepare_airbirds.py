@@ -53,7 +53,7 @@ def byte_ranges(size: int, parts: int) -> list[tuple[int, int]]:
     return [(s, min(s + step, size) - 1) for s in range(0, size, step)]
 
 
-def download(name: str, dest: Path, parts: int = 8) -> Path:
+def download(name: str, dest: Path, parts: int = 8, min_split: int = 50_000_000) -> Path:
     """Download one file from the AirBirds mirror in `parts` parallel byte ranges.
 
     One HTTP connection to the mirror manages ~7 MB/s here; several in parallel are much
@@ -62,7 +62,7 @@ def download(name: str, dest: Path, parts: int = 8) -> Path:
     dest.parent.mkdir(parents=True, exist_ok=True)
     url = f"{HF}/{name}"
     size = remote_size(url)
-    if size is None or size < 50_000_000:  # small or unknown size: one plain resumable download
+    if size is None or size < min_split:  # small or unknown size: one plain resumable download
         subprocess.run([*CURL, "-C", "-", "-o", str(dest), url], check=True)
         return dest
     if dest.exists() and dest.stat().st_size == size:
@@ -71,10 +71,15 @@ def download(name: str, dest: Path, parts: int = 8) -> Path:
     def fetch_part(i_rng):
         i, (s, e) = i_rng
         part = dest.with_name(f"{dest.name}.part{i}")
-        for _ in range(5):
-            if part.exists() and part.stat().st_size == e - s + 1:
+        for _ in range(20):  # connections do get cut mid-range; resume from what arrived
+            have = part.stat().st_size if part.exists() else 0
+            if have == e - s + 1:
                 return part
-            subprocess.run([*CURL, "-r", f"{s}-{e}", "-o", str(part), url], check=False)
+            if have > e - s + 1:
+                part.unlink()
+                have = 0
+            with open(part, "ab") as f:
+                subprocess.run([*CURL, "-r", f"{s + have}-{e}", url], stdout=f, check=False)
         raise RuntimeError(f"failed to download bytes {s}-{e} of {name}")
 
     from concurrent.futures import ThreadPoolExecutor
