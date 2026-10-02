@@ -78,6 +78,11 @@ def tile_labels(boxes, x0: int, y0: int, tile: int, min_visible: float) -> list[
     return lines
 
 
+def label_path(img_path: Path, split: str) -> Path:
+    """<root>/images/<split>/<name>.png -> <root>/labels/<split>/<name>.txt"""
+    return img_path.parents[2] / "labels" / split / f"{img_path.stem}.txt"
+
+
 def false_positive_centres(frames: list[Path], split: str, weights: str, imgsz: int, conf: float,
                            max_dist: float = 10.0, temporal: int = 0) -> dict[str, list[tuple[float, float]]]:
     """Per frame stem: centres of detections with no ground-truth bird within max_dist px.
@@ -101,7 +106,7 @@ def false_positive_centres(frames: list[Path], split: str, weights: str, imgsz: 
         for f, r in zip(batch, model.predict(inputs, imgsz=imgsz, conf=conf, verbose=False)):
             h, w = r.orig_shape
             gt = np.array([((x1 + x2) / 2, (y1 + y2) / 2) for _, x1, y1, x2, y2 in
-                           read_labels(SRC / "labels" / split / f"{f.stem}.txt", w, h)]).reshape(-1, 2)
+                           read_labels(label_path(f, split), w, h)]).reshape(-1, 2)
             det = r.boxes.xywh.cpu().numpy()[:, :2]
             far = [tuple(c) for c in det if len(gt) == 0 or np.min(np.hypot(*(gt - c).T)) > max_dist]
             if far:
@@ -119,7 +124,7 @@ def process_frame(img_path: Path, split: str, tile: int, empty_keep: float, min_
     if img is None:  # temporal: earlier frames missing
         return 0, 0, 0
     h, w = img.shape[:2]
-    boxes = read_labels(SRC / "labels" / split / f"{img_path.stem}.txt", w, h)
+    boxes = read_labels(label_path(img_path, split), w, h)
     rng = random.Random(zlib.crc32(img_path.stem.encode()))  # deterministic per frame
     n_tiles = n_boxes = n_hard = 0
     for y0 in tile_origins(h, tile):
@@ -153,14 +158,18 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--temporal", type=int, default=0, metavar="K",
                    help="Tile motion-stacked frames (t-2K, t-K, t) instead of colour frames.")
     p.add_argument("--out", default=None, help="Output folder (default: data/processed/airbirds_tiles[_temporalK]).")
+    p.add_argument("--src", default=str(SRC), help="Raw data root with images/<split> and labels/<split>.")
+    p.add_argument("--append", action="store_true",
+                   help="Add to existing tiles instead of starting clean (e.g. tiling one data chunk at a time).")
     args = p.parse_args(argv)
     dst = Path(args.out) if args.out else DST.with_name(DST.name + (f"_temporal{args.temporal}" if args.temporal else ""))
 
     for split in args.splits:
         for kind in ("images", "labels"):  # start clean so tiles from earlier settings don't linger
-            shutil.rmtree(dst / kind / split, ignore_errors=True)
-            (dst / kind / split).mkdir(parents=True)
-        frames = sorted((SRC / "images" / split).glob("*.png"))
+            if not args.append:
+                shutil.rmtree(dst / kind / split, ignore_errors=True)
+            (dst / kind / split).mkdir(parents=True, exist_ok=True)
+        frames = sorted((Path(args.src) / "images" / split).glob("*.png"))
         frames = frames[::args.val_every if split == "val" else args.train_every]
         hard = {}
         if args.hard_negatives and split == "train":  # val stays a plain random sample

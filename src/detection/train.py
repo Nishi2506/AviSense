@@ -24,13 +24,18 @@ from ultralytics import YOLO
 from src.detection.temporal import temporal_step
 
 # Absolute, because Ultralytics nests relative project paths under its own runs dir.
+# --project overrides it (e.g. a Google Drive folder on Colab, so checkpoints survive).
 RUNS_DIR = Path("runs/detect").resolve()
+
+
+def runs_dir(args: argparse.Namespace) -> Path:
+    return Path(args.project).resolve() if args.project else RUNS_DIR
 
 
 def train(args: argparse.Namespace) -> Path:
     name = args.name or f"airbirds_{Path(args.model).stem}_{args.imgsz}"
     if args.resume:  # Ultralytics resumes from the run's own last.pt with its saved settings
-        model = YOLO(RUNS_DIR / name / "weights" / "last.pt")
+        model = YOLO(runs_dir(args) / name / "weights" / "last.pt")
         model.train(resume=True)
     else:
         model = YOLO(args.model)
@@ -47,7 +52,7 @@ def train(args: argparse.Namespace) -> Path:
             workers=args.workers,
             patience=args.patience,  # early stop if val mAP stops improving
             scale=0.2,
-            project=str(RUNS_DIR),
+            project=str(runs_dir(args)),
             name=name,
             fraction=args.fraction,
             pretrained=args.pretrained or True,  # a .pt path loads its weights into a .yaml-built model
@@ -65,7 +70,7 @@ def evaluate(weights: str | Path, args: argparse.Namespace) -> None:
     metrics = YOLO(str(weights)).val(data=args.test_data or args.data, split="test",
                                      imgsz=args.test_imgsz or args.imgsz,
                                      batch=min(args.batch, 8) if args.batch > 0 else 8,  # full frames: keep VRAM low
-                                     device=args.device, plots=True, project=str(RUNS_DIR),
+                                     device=args.device, plots=True, project=str(runs_dir(args)),
                                      name=f"test_{Path(weights).stem}")
     print(f"Test split: mAP50 {metrics.box.map50:.3f}  mAP50-95 {metrics.box.map:.3f}  "
           f"precision {metrics.box.mp:.3f}  recall {metrics.box.mr:.3f}")
@@ -86,6 +91,7 @@ def main(argv: list[str] | None = None) -> None:
                    help="Weights to load into a model built from a .yaml (e.g. yolo11n.pt for yolo11n-p2.yaml).")
     p.add_argument("--fraction", type=float, default=1.0, help="Fraction of train set to use (quick tests).")
     p.add_argument("--name", default=None, help="Run name (default: airbirds_<model>_<imgsz>).")
+    p.add_argument("--project", default=None, help="Folder for training runs (default: runs/detect).")
     p.add_argument("--resume", action="store_true", help="Resume the named run from its last.pt.")
     p.add_argument("--evaluate", default=None, metavar="WEIGHTS",
                    help="Skip training; evaluate these weights on the test split.")

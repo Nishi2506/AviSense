@@ -126,6 +126,24 @@ python -m src.risk_scoring.risk --features data/processed/<clip>_features.csv --
 The live pipeline and the step-by-step commands compute identical scores (checked in
 `tests/test_pipeline.py`).
 
+## Training on Google Colab (recommended)
+
+The training data is ~135 GB once extracted. [`notebooks/train_detector_colab.ipynb`](notebooks/train_detector_colab.ipynb)
+does the whole job on Colab's GPU instead: it downloads AirBirds straight from Hugging Face,
+tiles one chunk at a time (deleting each after tiling, so Colab's disk never fills),
+trains, tests on the D02 2021-06-28 sequence, and leaves only the model (~6 MB) and the
+run's logs in Google Drive. The laptop then only needs `models/` and `data/videos/`.
+
+1. Make the code zip: `git archive --format=zip -o outputs/avisense_code.zip HEAD`.
+2. In Google Drive create `MyDrive/AviSense/` and upload `avisense_code.zip` (and,
+   optionally, a previous model renamed `hard_negative_model.pt` for hard-negative mining).
+3. Open the notebook in Colab, choose a T4 GPU runtime, *Run all* (~5–7 h; checkpoints
+   go to Drive, and section 6 resumes after a disconnect).
+4. Download `MyDrive/AviSense/models/<run name>.pt` into `models/`.
+
+`make_tiles --src <raw root> --append` and `train --project <folder>` are what make the
+chunk-by-chunk tiling and Drive checkpoints possible; they also work locally.
+
 ## Training on AirBirds
 
 Data: train = chunk 0, val = chunk 9 (the authors' suggestion), test = D02 0628 —
