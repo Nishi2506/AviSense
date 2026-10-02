@@ -37,11 +37,56 @@ def zip_name(kind: str, chunk: str) -> str:
     return f"{kind}{chunk}.zip" if chunk.isdigit() else f"{kind}_{chunk}.zip"
 
 
-def download(name: str, dest: Path) -> Path:
-    """Download one file from the AirBirds mirror, resuming a partial download."""
+CURL = ["curl", "-sSL", "--retry", "20", "--retry-all-errors", "--retry-delay", "5"]
+
+
+def remote_size(url: str) -> int | None:
+    """Content-Length of the final (redirected) response, or None if unknown."""
+    out = subprocess.run([*CURL, "-I", url], capture_output=True, text=True).stdout
+    sizes = [int(l.split(":", 1)[1]) for l in out.splitlines() if l.lower().startswith("content-length:")]
+    return sizes[-1] if sizes else None
+
+
+def byte_ranges(size: int, parts: int) -> list[tuple[int, int]]:
+    """Split [0, size) into `parts` inclusive (start, end) byte ranges."""
+    step = -(-size // parts)
+    return [(s, min(s + step, size) - 1) for s in range(0, size, step)]
+
+
+def download(name: str, dest: Path, parts: int = 8) -> Path:
+    """Download one file from the AirBirds mirror in `parts` parallel byte ranges.
+
+    One HTTP connection to the mirror manages ~7 MB/s here; several in parallel are much
+    faster. Finished parts are kept, so a rerun only fetches the missing ones.
+    """
     dest.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["curl", "-sSL", "--retry", "20", "--retry-all-errors", "--retry-delay", "5",
-                    "-C", "-", "-o", str(dest), f"{HF}/{name}"], check=True)
+    url = f"{HF}/{name}"
+    size = remote_size(url)
+    if size is None or size < 50_000_000:  # small or unknown size: one plain resumable download
+        subprocess.run([*CURL, "-C", "-", "-o", str(dest), url], check=True)
+        return dest
+    if dest.exists() and dest.stat().st_size == size:
+        return dest
+
+    def fetch_part(i_rng):
+        i, (s, e) = i_rng
+        part = dest.with_name(f"{dest.name}.part{i}")
+        for _ in range(5):
+            if part.exists() and part.stat().st_size == e - s + 1:
+                return part
+            subprocess.run([*CURL, "-r", f"{s}-{e}", "-o", str(part), url], check=False)
+        raise RuntimeError(f"failed to download bytes {s}-{e} of {name}")
+
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(parts) as ex:
+        part_files = list(ex.map(fetch_part, enumerate(byte_ranges(size, parts))))
+    with open(dest, "wb") as out:
+        for part in part_files:
+            with open(part, "rb") as f:
+                shutil.copyfileobj(f, out, 1 << 24)
+            part.unlink()
+    if dest.stat().st_size != size:
+        raise RuntimeError(f"{name}: got {dest.stat().st_size} bytes, expected {size}")
     return dest
 
 

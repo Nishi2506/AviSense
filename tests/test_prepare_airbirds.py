@@ -26,3 +26,10 @@ def test_move_sequence_moves_images_and_labels(tmp_path):
     assert move_sequence(tmp_path, "D02_held", "train", "val") == 2
     assert sorted(p.name for p in (tmp_path / "images" / "train").iterdir()) == ["D02_keep_0000001.png"]
     assert len(list((tmp_path / "labels" / "val").iterdir())) == 2
+
+
+def test_byte_ranges_cover_the_file_exactly():
+    from src.detection.prepare_airbirds import byte_ranges
+    r = byte_ranges(100, 3)
+    assert r == [(0, 33), (34, 67), (68, 99)]
+    assert byte_ranges(10, 1) == [(0, 9)]
