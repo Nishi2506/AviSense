@@ -50,7 +50,7 @@ Zones for the two AirBirds cameras used in testing are included:
 cover the paved strip visible behind the runway edge lights and were traced from a
 single frame, so check them against your own view before relying on them.
 
-For the best detector, pick `models/airbirds_tiles_temporal2_hn_yolo11n-p2_640.pt` (the dashboard default) with **image size
+For the best detector, pick `models/airbirds_tiles_temporal2_hn_e1_yolo11n-p2_640.pt` (the dashboard default) with **image size
 1920** (see [Training](#training-on-airbirds) for why).
 
 ## Risk scoring
@@ -109,14 +109,14 @@ The same pipeline without the dashboard:
 
 ```powershell
 python -m src.pipeline --source data/videos/<clip>.mp4 --zones configs/zones/cam1.json `
-    --weights models/airbirds_tiles_temporal2_hn_yolo11n-p2_640.pt --imgsz 1920 --save outputs/pipeline.mp4 --db outputs/alerts.db
+    --weights models/airbirds_tiles_temporal2_hn_e1_yolo11n-p2_640.pt --imgsz 1920 --save outputs/pipeline.mp4 --db outputs/alerts.db
 ```
 
 Or step by step, producing CSVs at each stage (used for the ML notebook and analysis):
 
 ```powershell
 python -m src.tracking.track --source data/videos/<clip>.mp4 --csv data/processed/<clip>_tracks.csv `
-    --weights models/airbirds_tiles_temporal2_hn_yolo11n-p2_640.pt --imgsz 1920
+    --weights models/airbirds_tiles_temporal2_hn_e1_yolo11n-p2_640.pt --imgsz 1920
 python -m src.risk_scoring.features --tracks data/processed/<clip>_tracks.csv --zones configs/zones/cam1.json `
     --out data/processed/<clip>_features.csv --start-time 2021-06-28T09:08:56
 python -m src.risk_scoring.risk --features data/processed/<clip>_features.csv --out data/processed/<clip>_risk.csv `
@@ -205,9 +205,18 @@ Test split = D02 0628, 10,000 full frames, 1,148 birds. RTX 5060 laptop GPU.
 | `airbirds_tiles_c0567_yolo11n_640.pt` | chunks 0, 5, 6, 7 (D01 + D02) | tiles @640, batch 32; stopped at epoch 52 (best 27), 3.1 h | 1920 | 0.464 | 0.687 | 0.602 | 0.197 |
 | `airbirds_tiles_temporal2_yolo11n_640.pt` | chunks 0, 5, 6, 7 — consecutive frames only | **motion input**, batch 16; stopped at epoch 43 (best 18), 1.3 h | 1920 | 0.597 | 0.625 | 0.603 | 0.203 |
 | `airbirds_tiles_hn_yolo11n-p2_640.pt` | chunks 0, 5, 6, 7 + hard negatives | **P2 head**, batch 16; stopped at epoch 42 (best 17), 4.5 h | 1920 | 0.671 | **0.782** | 0.729 | 0.250 |
-| **`airbirds_tiles_temporal2_hn_yolo11n-p2_640.pt`** | **chunks 0, 5, 6, 7 + D02 2021-07-21, consecutive frames, hard negatives** | **P2 head + motion input**, batch 16; stopped at epoch 48 (best 23), 2.8 h | 1920 | **0.714** | **0.782** | **0.770** | **0.276** |
+| `airbirds_tiles_temporal2_hn_yolo11n-p2_640.pt` | chunks 0, 5, 6, 7 + D02 2021-07-21, every 2nd consecutive frame, hard negatives | P2 head + motion input, batch 16; stopped at epoch 48 (best 23), 2.8 h | 1920 | 0.714 | **0.782** | **0.770** | 0.276 |
+| **`airbirds_tiles_temporal2_hn_e1_yolo11n-p2_640.pt`** | **chunks 5, 6, 7 + D02 2021-07-21, every consecutive frame, hard negatives** (30,380 tiles) | **P2 head + motion input**, batch 16; stopped at epoch 72 (best 47), 6.4 h | 1920 | **0.755** | 0.762 | 0.761 | **0.293** |
 
-**Current best: `airbirds_tiles_temporal2_hn_yolo11n-p2_640.pt`** (dashboard default), combining four improvements:
+**Current best: `airbirds_tiles_temporal2_hn_e1_yolo11n-p2_640.pt`** (dashboard default). It is the same recipe as `airbirds_tiles_temporal2_hn_yolo11n-p2_640.pt`
+trained on every frame instead of every 2nd (chunk 0 dropped: only 13% of its frames have
+the consecutive neighbours motion input needs), prepared with `src.detection.prepare_airbirds`
+without keeping the raw frames. Detection is on par (mAP50 0.761 vs 0.770, precision +4
+points), but tracking is clearly better: at tracked-box confidence ≥ 0.3 and the 20 px
+motion filter, precision 0.800 / recall **0.618** vs 0.801 / 0.533 (frames with a false
+alarm 1.8% vs 1.5%); at conf 0.1, 0.676 / 0.635 vs 0.695 / 0.552.
+
+The recipe combines four improvements:
 
 1. **Training on the test camera's view.** Chunk 0 is entirely camera D01, the test
    sequence camera D02. Adding chunks 5–7 (24,683 D02 frames from other days) raised

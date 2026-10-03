@@ -70,7 +70,7 @@ zone_choice = st.sidebar.selectbox("Runway zones", [p.name for p in zone_files],
                                    placeholder="Draw one with zone_editor" if not zone_files else "Choose zones")
 
 weights_files = ["yolo11n.pt"] + sorted(str(p.relative_to(ROOT)) for p in (ROOT / "models").glob("*.pt"))
-BEST_WEIGHTS = "airbirds_tiles_temporal2_hn_yolo11n-p2_640.pt"  # best on the test split (see README)
+BEST_WEIGHTS = "airbirds_tiles_temporal2_hn_e1_yolo11n-p2_640.pt"  # best on the test split (see README)
 preferred = [i for i, w in enumerate(weights_files) if w.endswith(BEST_WEIGHTS)] or \
             [i for i, w in enumerate(weights_files) if "airbirds_tiles_" in w]
 weights = st.sidebar.selectbox("Detector weights", weights_files,
