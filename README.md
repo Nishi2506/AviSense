@@ -16,7 +16,7 @@ Frame Extraction ──► Bird Detection (YOLO11) ──► Multi-Object Tracki
                                                         │
                                                         ▼
 Dashboard & Alerts ◄── Risk Classification ◄── Risk Scoring ◄── Feature Extraction
-   (Streamlit)          (Low / Med / High)      (weighted)     (speed, direction,
+   (React web UI)       (Low / Med / High)      (weighted)     (speed, direction,
                                                                 count, proximity)
 ```
 
@@ -29,7 +29,8 @@ Dashboard & Alerts ◄── Risk Classification ◄── Risk Scoring ◄─�
 | Feature extraction | `src/risk_scoring/features.py` | done |
 | Risk scoring + classification + alerts | `src/risk_scoring/risk.py`, `configs/risk.yaml` | done |
 | End-to-end live pipeline + SQLite alert log | `src/pipeline.py`, `src/alert_log.py` | done |
-| Dashboard | `src/dashboard/app.py` | done |
+| Web UI (React) + API server | `frontend/`, `src/api/` | done |
+| Legacy Streamlit dashboard | `src/dashboard/app.py` | kept for reference |
 | Optional ML classifier | `notebooks/risk_classifier_colab.ipynb`, `src/risk_scoring/ml_model.py` | done (runs on Colab) |
 
 ## Quick start
@@ -40,9 +41,12 @@ Dashboard & Alerts ◄── Risk Classification ◄── Risk Scoring ◄─�
 # 1. Draw the runway zone for your camera once
 python -m src.risk_scoring.zone_editor --source data/videos/<clip>.mp4 --out configs/zones/cam1.json --names runway
 
-# 2. Open the dashboard, pick the video + zones, press Run
-streamlit run src/dashboard/app.py
+# 2. Start the server and open http://127.0.0.1:8000, pick the video + zones, press Run
+python -m src.api.server
 ```
+
+The first time (or after changing anything in `frontend/`), build the UI once:
+`cd frontend; npm run build` (see [Web UI](#web-ui)).
 
 Zones for the two AirBirds cameras used in testing are included:
 [`configs/zones/D02.json`](configs/zones/D02.json) (test sequence) and
@@ -85,23 +89,45 @@ Everything is set in [`configs/risk.yaml`](configs/risk.yaml):
 - **Alerts:** consecutive frames at Medium or above form an alert episode; episodes
   shorter than 1 s are ignored and gaps under 2 s are merged.
 
-## Dashboard
+## Web UI
+
+A React + Vite app in [`frontend/`](frontend/) talks to a small Starlette API
+([`src/api/server.py`](src/api/server.py)) that runs the same `Pipeline` as the command line.
 
 ```powershell
-streamlit run src/dashboard/app.py
+python -m src.api.server            # API + built UI on http://127.0.0.1:8000 (localhost only)
+
+cd frontend
+npm run build                       # once, and after UI changes: writes frontend/dist
+npm run dev                         # or: live-reloading UI on http://localhost:3000 (API must be running)
 ```
 
-Pick a video from `data/videos/` (or upload one, or use a webcam), a zones file from
-`configs/zones/`, and detector weights (fine-tuned weights in `models/` appear
-automatically). Weights and thresholds can be adjusted live in the sidebar.
+`frontend/node_modules` is not in git; install it with `npm install` in `frontend/` (Node 18+).
+The page loads Tailwind, Inter / JetBrains Mono and Material Symbols from CDNs, so the browser
+needs internet access.
 
-It shows the annotated video (zones, tracked birds, trails, risk banner), the current
-risk level, bird count / flock / distance / speed, a risk-over-time chart with the
-thresholds, a per-factor contribution chart, pop-up alerts, and the alert history
-from SQLite (`outputs/alerts.db`).
+| Page | Shows |
+|---|---|
+| Start Page | Selected source, risk levels, the live feed while running, recent alert episodes, GPU / detector / processing FPS |
+| Live Monitoring | Processed frame with runway zones and tracked birds (box red inside a zone, amber within half the proximity range, green elsewhere; ID, confidence, trail), level + score, bird count / flock / in-zone, fastest bird and nearest distance to the zone, each factor's contribution against its weight, and the run's risk timeline with the thresholds |
+| Alert History | Every episode in `outputs/alerts.db`: filter, search, sort, and per-episode details (video and wall-clock time, birds, max speed, nearest distance, factor contributions at the peak) |
+| How It Works | The method, with the formulas, caps, windows and alert rules read from `configs/risk.yaml` |
+| Results | Test-split metrics, confusion matrix and PR curve, training curves from `results.csv`, and every trained model ([`src/api/results.py`](src/api/results.py), update it with the README table) |
+| Settings | Zone viewer on a frame of the selected video, detector weights / image size / confidence / motion filter / track age, video start time, thresholds and presets, factor weights, alert sound and alert rules |
 
-The video start time (for the time-of-day term) is read from the filename when it
-contains a `YYYYMMDDhhmmss` stamp (AirBirds style), or can be set in the sidebar.
+Pick a video from `data/videos/` (or upload one, or use the webcam) and a zones file in the
+sidebar; the zones file whose name appears in the video name is chosen automatically. Settings
+are kept in the browser and sent with **Run**; they do not change `configs/risk.yaml`. One run
+at a time; the browser polls `/api/state` about 4 times a second and fetches the matching frame.
+
+The video start time (for the time-of-day term) is read from the filename when it contains a
+`YYYYMMDDhhmmss` stamp (AirBirds style), or can be set in Settings.
+
+The alert log now also stores, per episode, the fastest bird (`max_speed`), the nearest any bird
+came to a zone (`min_dist`) and the factor contributions at the peak frame (`c_*`); older
+databases get these columns automatically (empty for old rows).
+
+The previous Streamlit dashboard still runs with `streamlit run src/dashboard/app.py`.
 
 ## Command-line pipeline
 
@@ -365,11 +391,13 @@ AviSense/
 ├── models/               # fine-tuned weights, risk_model.json — git-ignored
 ├── notebooks/            # risk_classifier_colab.ipynb
 ├── outputs/              # annotated videos, alerts.db — git-ignored
+├── frontend/             # React + Vite web UI (npm run build -> frontend/dist)
 ├── src/
+│   ├── api/              # server.py (Starlette API + UI), session.py (run manager), results.py
 │   ├── detection/        # detect.py, train.py
 │   ├── tracking/         # track.py
 │   ├── risk_scoring/     # zones, zone_editor, features, risk, ml_model
-│   ├── dashboard/        # app.py (Streamlit)
+│   ├── dashboard/        # app.py (legacy Streamlit dashboard)
 │   ├── pipeline.py       # end-to-end live pipeline
 │   └── alert_log.py      # SQLite alert log
 └── tests/
@@ -420,6 +448,6 @@ See [`data/README.md`](data/README.md).
 3. Tracking with ByteTrack (enlarged-box matching for tiny, fast birds)
 4. Features: speed, heading, count, flock size, distance to runway polygon, time of day
 5. Weighted risk score, Low/Medium/High, explainable alerts
-6. Streamlit dashboard with live video, risk level, charts and SQLite alert log
+6. Web UI (React, `frontend/`) with live video, risk level, charts and SQLite alert log (replaces the Streamlit dashboard)
 7. Evaluation: detection mAP on the test split ; tracking precision/recall against
    ground truth ; risk-level agreement with labelled clips (Colab notebook) still to do

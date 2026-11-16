@@ -1,0 +1,23 @@
+/* AlertHistory.css - Page-specific styles for Alert History */
+
+.alert-history-container {
+  min-height: calc(100vh - 3.5rem);
+}
+
+.alert-row-selected {
+  background-color: #161818 !important;
+  color: #ffffff !important;
+}
+
+.alert-row-selected-high {
+  border-left: 2px solid #ef4444 !important;
+}
+
+.alert-row-selected-med {
+  border-left: 2px solid #f59e0b !important;
+}
+
+.alert-row-selected-low {
+  border-left: 2px solid #10b981 !important;
+}
+

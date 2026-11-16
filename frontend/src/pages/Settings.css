@@ -1,0 +1,15 @@
+/* Settings.css - Page-specific styles for Settings */
+
+.settings-container {
+  min-height: calc(100vh - 3.5rem);
+}
+
+.switch-peer:checked ~ .switch-toggle {
+  transform: translateX(100%);
+  border-color: white;
+}
+
+.switch-peer:checked ~ .switch-bg {
+  background-color: #10b981;
+}
+

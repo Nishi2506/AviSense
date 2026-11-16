@@ -44,3 +44,14 @@ outputs/**
 *.db
 *.sqlite
 *.log
+
+# --- Web UI build ---
+frontend/node_modules/
+frontend/dist/
+
+# --- Risk-labelling study ---
+# Private: clip -> source mapping and pipeline scores; never commit or share.
+private_labelling/
+private_labelling.zip
+# Over GitHub's 100 MB file limit; the same clips are in prashasti_labelling/.
+prashasti_labelling.zip
