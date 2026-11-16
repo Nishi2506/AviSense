@@ -1,0 +1,18 @@
+/* Results.css - Page-specific styles for Results */
+
+.results-container {
+  min-height: calc(100vh - 3.5rem);
+}
+
+@media print {
+  aside, header {
+    display: none !important;
+  }
+  .pl-80 {
+    padding-left: 0 !important;
+  }
+  main {
+    padding-top: 0 !important;
+  }
+}
+

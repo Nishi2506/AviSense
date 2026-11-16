@@ -112,7 +112,10 @@ class _Episode:
     peak_score: float = 0.0
     peak_level: str = "Low"
     max_count: int = 0
+    max_speed: float = 0.0
+    min_dist: float | None = None  # nearest any bird came to a zone (diag); None if never measured
     contrib: dict[str, float] = field(default_factory=lambda: dict.fromkeys(FACTORS, 0.0))
+    peak_contrib: dict[str, float] = field(default_factory=lambda: dict.fromkeys(FACTORS, 0.0))
     alert_id: int | None = None
 
     @property
@@ -123,7 +126,8 @@ class _Episode:
         return dict(start_s=self.start_s, end_s=self.end_s, duration_s=self.duration_s,
                     start_frame=self.start_frame, end_frame=self.end_frame, peak_score=self.peak_score,
                     peak_level=self.peak_level, top_factor=max(self.contrib, key=self.contrib.get),
-                    max_count=self.max_count, status=status)
+                    max_count=self.max_count, max_speed=self.max_speed, min_dist=self.min_dist,
+                    status=status, **{f"c_{f}": c for f, c in self.peak_contrib.items()})
 
 
 class AlertTracker:
@@ -157,7 +161,12 @@ class AlertTracker:
         ep.end_s, ep.end_frame = time_s, frame_idx
         if risk.score > ep.peak_score:
             ep.peak_score, ep.peak_level = risk.score, risk.level
+            ep.peak_contrib = dict(risk.contributions)
         ep.max_count = max(ep.max_count, risk.features["count"])
+        ep.max_speed = max(ep.max_speed, float(risk.features.get("max_speed") or 0.0))
+        dist = risk.features.get("min_dist_to_zone")
+        if dist is not None and not pd.isna(dist):
+            ep.min_dist = float(dist) if ep.min_dist is None else min(ep.min_dist, float(dist))
         for f, c in risk.contributions.items():
             ep.contrib[f] += c
         if ep.duration_s >= self.min_duration:

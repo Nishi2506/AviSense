@@ -1,0 +1,17 @@
+/* LiveMonitoring.css - Page-specific styles and animations for Live Monitoring */
+
+.live-monitoring-container {
+  min-height: calc(100vh - 3.5rem);
+}
+
+.radar-ping-dot {
+  animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes ping {
+  75%, 100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+

@@ -29,8 +29,19 @@ CREATE TABLE IF NOT EXISTS alerts (
 )
 """
 
+# Added later; missing from older databases, so they are added on open and are NULL for old rows.
+EXTRA_COLUMNS = {
+    "max_speed": "REAL",          # fastest bird during the episode (frame diagonals / s)
+    "min_dist": "REAL",           # nearest any bird came to a zone (frame diagonals; 0 = inside)
+    "c_count": "REAL",            # weighted factor contributions at the episode's peak frame
+    "c_speed": "REAL",
+    "c_proximity": "REAL",
+    "c_flock_size": "REAL",
+    "c_time_of_day": "REAL",
+}
+
 FIELDS = ["source", "camera", "started_at", "start_s", "end_s", "duration_s", "start_frame",
-          "end_frame", "peak_score", "peak_level", "top_factor", "max_count", "status"]
+          "end_frame", "peak_score", "peak_level", "top_factor", "max_count", "status", *EXTRA_COLUMNS]
 
 
 class AlertLog:
@@ -39,6 +50,10 @@ class AlertLog:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(str(path), check_same_thread=False)
         self.conn.execute(SCHEMA)
+        have = {row[1] for row in self.conn.execute("PRAGMA table_info(alerts)")}
+        for name, kind in EXTRA_COLUMNS.items():
+            if name not in have:
+                self.conn.execute(f"ALTER TABLE alerts ADD COLUMN {name} {kind}")
         self.conn.commit()
 
     def upsert(self, episode: dict, alert_id: int | None = None) -> int:
@@ -56,6 +71,9 @@ class AlertLog:
 
     def recent(self, limit: int = 50) -> pd.DataFrame:
         return pd.read_sql_query("SELECT * FROM alerts ORDER BY id DESC LIMIT ?", self.conn, params=(limit,))
+
+    def count(self) -> int:
+        return self.conn.execute("SELECT COUNT(*) FROM alerts").fetchone()[0]
 
     def close(self) -> None:
         self.conn.close()

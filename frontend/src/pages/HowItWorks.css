@@ -1,0 +1,6 @@
+/* HowItWorks.css - Page-specific styles for How It Works */
+
+.how-it-works-container {
+  min-height: calc(100vh - 3.5rem);
+}
+
