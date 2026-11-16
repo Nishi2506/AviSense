@@ -22,16 +22,16 @@ Dashboard & Alerts ◄── Risk Classification ◄── Risk Scoring ◄─�
 
 | Stage | Module | Status |
 |---|---|---|
-| Frame extraction + detection | `src/detection/detect.py` | ✅ |
-| Fine-tuning on AirBirds (native-resolution tiles) | `src/detection/make_tiles.py`, `train.py`, `configs/airbirds_tiles.yaml` | ✅ test mAP50 0.602 |
-| Tracking (ByteTrack, enlarged-box matching for tiny birds) | `src/tracking/track.py` | ✅ |
-| Runway zones (polygons) | `src/risk_scoring/zones.py`, `zone_editor.py` | ✅ |
-| Feature extraction | `src/risk_scoring/features.py` | ✅ |
-| Risk scoring + classification + alerts | `src/risk_scoring/risk.py`, `configs/risk.yaml` | ✅ |
-| End-to-end live pipeline + SQLite alert log | `src/pipeline.py`, `src/alert_log.py` | ✅ |
-| Web UI (React) + API server | `frontend/`, `src/api/` | ✅ |
+| Frame extraction + detection | `src/detection/detect.py` | done |
+| Fine-tuning on AirBirds (native-resolution tiles) | `src/detection/make_tiles.py`, `train.py`, `configs/airbirds_tiles.yaml` | done test mAP50 0.602 |
+| Tracking (ByteTrack, enlarged-box matching for tiny birds) | `src/tracking/track.py` | done |
+| Runway zones (polygons) | `src/risk_scoring/zones.py`, `zone_editor.py` | done |
+| Feature extraction | `src/risk_scoring/features.py` | done |
+| Risk scoring + classification + alerts | `src/risk_scoring/risk.py`, `configs/risk.yaml` | done |
+| End-to-end live pipeline + SQLite alert log | `src/pipeline.py`, `src/alert_log.py` | done |
+| Web UI (React) + API server | `frontend/`, `src/api/` | done |
 | Legacy Streamlit dashboard | `src/dashboard/app.py` | kept for reference |
-| Optional ML classifier | `notebooks/risk_classifier_colab.ipynb`, `src/risk_scoring/ml_model.py` | ✅ (runs on Colab) |
+| Optional ML classifier | `notebooks/risk_classifier_colab.ipynb`, `src/risk_scoring/ml_model.py` | done (runs on Colab) |
 
 ## Quick start
 
@@ -443,11 +443,11 @@ See [`data/README.md`](data/README.md).
 
 ## Roadmap
 
-1. ✅ Detection on video (COCO-pretrained YOLO11n)
-2. ✅ Fine-tune on AirBirds — native-resolution tiles, D01 + D02 cameras: test mAP50 0.602 (full-frame D01-only baseline 0.142)
-3. ✅ Tracking with ByteTrack (enlarged-box matching for tiny, fast birds)
-4. ✅ Features: speed, heading, count, flock size, distance to runway polygon, time of day
-5. ✅ Weighted risk score, Low/Medium/High, explainable alerts
-6. ✅ Streamlit dashboard with live video, risk level, charts and SQLite alert log
-7. ⏳ Evaluation: detection mAP on the test split ✅; tracking precision/recall against
-   ground truth ✅; risk-level agreement with labelled clips (Colab notebook) still to do
+1. Detection on video (COCO-pretrained YOLO11n)
+2. Fine-tune on AirBirds — native-resolution tiles, D01 + D02 cameras: test mAP50 0.602 (full-frame D01-only baseline 0.142)
+3. Tracking with ByteTrack (enlarged-box matching for tiny, fast birds)
+4. Features: speed, heading, count, flock size, distance to runway polygon, time of day
+5. Weighted risk score, Low/Medium/High, explainable alerts
+6. Web UI (React, `frontend/`) with live video, risk level, charts and SQLite alert log (replaces the Streamlit dashboard)
+7. Evaluation: detection mAP on the test split ; tracking precision/recall against
+   ground truth ; risk-level agreement with labelled clips (Colab notebook) still to do
